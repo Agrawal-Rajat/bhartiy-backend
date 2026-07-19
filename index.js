@@ -28,10 +28,25 @@ import { VisitorRoute } from "./src/routes/visitor.routes.js";
 dotenv.config();
 const app = express();
 app.set("trust proxy", 1);
-app.use(cors({
-  origin: ['http://localhost:3000', 'http://localhost:5173', 'https://bhartiy-frontend.vercel.app/', 'https://bhartiy-backend-0mfd.onrender.com'],
-  credentials: true
-}));
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://localhost:5173",
+  "https://bhartiy-frontend.vercel.app",
+];
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error(`CORS blocked for origin: ${origin}`));
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
 app.use("/uploads", express.static(path.join("uploads")))
 app.use(bodyParser.urlencoded({ extended: true }));
 
