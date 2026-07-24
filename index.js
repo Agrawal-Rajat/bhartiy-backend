@@ -23,6 +23,8 @@ import { HomeRoute } from "./src/routes/home.routes.js";
 import { LiveSessionRoute } from "./src/routes/live.sessions.routes.js";
 import { SaveSessionRoute } from "./src/routes/save.sessions.routes.js";
 import { VisitorRoute } from "./src/routes/visitor.routes.js";
+import { TrainingRoute } from "./src/routes/training.route.js";
+import { TrainingApplyRouter } from "./src/routes/training.apply.route.js";
 
 // configuring 
 dotenv.config();
@@ -78,6 +80,8 @@ app.use("/api/homebanner", HomeRoute)
 app.use("/api/livesession", LiveSessionRoute)
 app.use("/api/savesession", SaveSessionRoute)
 app.use("/api/visitors", VisitorRoute)
+app.use("/api/training", TrainingRoute)
+app.use("/api/trainingapply", TrainingApplyRouter)
 // start app
 const PORT = process.env.PORT || 3000;
 connectDb()
