@@ -32,6 +32,7 @@ const UserUpdateController = async (req, res) => {
     const {
       id,
       address,
+      city,
       username,
       dob,
       email,
@@ -82,6 +83,7 @@ const UserUpdateController = async (req, res) => {
 
     const updateData = {
       address: address.trim(),
+      city: city.trim(),
       username: username.trim(),
       dob,
       age,
