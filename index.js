@@ -34,7 +34,7 @@ const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:5173",
   "https://bhartiy-frontend.vercel.app",
-  "https://www.bhartiy.in/",
+  "https://www.bhartiy.in",
 ];
 
 app.use(
