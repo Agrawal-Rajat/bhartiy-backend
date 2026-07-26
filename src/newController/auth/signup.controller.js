@@ -25,9 +25,9 @@ export const calculateAge = (dob) => {
 
 const SignUpController = async (req, res) => {
   try {
-    const { email, password, address, name, gender, dob, mobile } = req.body;
+    const { email, password, address, city, bloodGroup, name, gender, dob, mobile } = req.body;
 
-    if (!email || !password || !address || !name || !gender || !dob || !mobile) {
+    if (!email || !password || !address || !city || !bloodGroup || !name || !gender || !dob || !mobile) {
       return res.status(400).json({
         success: false,
         message: "All fields are required",
@@ -69,6 +69,8 @@ const SignUpController = async (req, res) => {
       gender,
       dob,
       address,
+      city,
+      bloodGroup,
       username: name,
       age,
     });

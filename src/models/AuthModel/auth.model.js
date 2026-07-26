@@ -6,9 +6,10 @@ const AuthSchema = new mongoose.Schema(
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true }, // should be hashed
     address: { type: String, required: true },
+    city: { type: String, required: true, trim: true },
     gender: { type: String, enum: ["male", "female", "other"], default: "other", required: true },
     caste: { type: String, trim: true, default: "" },
-    bloodGroup: { type: String, trim: true, default: "" },
+    bloodGroup: { type: String, required: true, trim: true, default: "" },
     status: { type: String, enum: ["approved", "pending", "rejected"], default: "pending", required: true },
     mobileNumber: { type: String, required: true, minlength: 10, maxlength: 10 },
     dob: { type: Date, required: true },
