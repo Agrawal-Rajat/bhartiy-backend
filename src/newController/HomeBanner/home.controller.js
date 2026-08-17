@@ -32,7 +32,8 @@ const getCloudinaryPublicId = (imageUrl) => {
 
 const homeInsertController = async (req, res) => {
   try {
-    const { heading, subheading } = req.body;
+    const heading = req.body.heading || "Banner";
+    const subheading = req.body.subheading || "Banner";
     let poster = null;
 
     if (req.files?.[0]?.buffer) {
@@ -43,10 +44,10 @@ const homeInsertController = async (req, res) => {
       poster = uploadResult.secure_url;
     }
 
-    if (!heading || !subheading || !poster) {
+    if (!poster) {
       return res.status(400).json({
         success: false,
-        message: "All fields are required",
+        message: "Poster image is required",
       });
     }
 
@@ -86,7 +87,9 @@ const getHomeBannerData = async (req, res) => {
 
 const EditHomeData = async (req, res) => {
   try {
-    const { _id, heading, subheading, poster } = req.body;
+    const { _id, poster } = req.body;
+    const heading = req.body.heading || "Banner";
+    const subheading = req.body.subheading || "Banner";
     const homeContent = await HomeBanner.findById(_id);
 
     if (!homeContent) {
@@ -109,8 +112,8 @@ const EditHomeData = async (req, res) => {
     const updated = await HomeBanner.findByIdAndUpdate(
       _id,
       {
-        heading,
-        subheading,
+        heading: heading || homeContent.heading || "Banner",
+        subheading: subheading || homeContent.subheading || "Banner",
         poster: newPoster || poster || homeContent.poster,
       },
       { new: true },
