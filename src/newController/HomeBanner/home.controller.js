@@ -32,8 +32,8 @@ const getCloudinaryPublicId = (imageUrl) => {
 
 const homeInsertController = async (req, res) => {
   try {
-    const heading = req.body.heading || "Banner";
-    const subheading = req.body.subheading || "Banner";
+    const heading = req.body.heading || "";
+    const subheading = req.body.subheading || "";
     let poster = null;
 
     if (req.files?.[0]?.buffer) {
@@ -76,7 +76,7 @@ const homeInsertController = async (req, res) => {
 
 const getHomeBannerData = async (req, res) => {
   try {
-    var data = data = await HomeBanner.find({}).sort({ createdAt: -1 })
+    var data = await HomeBanner.find({}).sort({ createdAt: -1 });
 
     res.status(201).json({ success: true, message: "Home banner data fetched successfully", data: data });
   } catch (error) {
@@ -88,8 +88,8 @@ const getHomeBannerData = async (req, res) => {
 const EditHomeData = async (req, res) => {
   try {
     const { _id, poster } = req.body;
-    const heading = req.body.heading || "Banner";
-    const subheading = req.body.subheading || "Banner";
+    const heading = req.body.heading || "";
+    const subheading = req.body.subheading || "";
     const homeContent = await HomeBanner.findById(_id);
 
     if (!homeContent) {
@@ -112,8 +112,8 @@ const EditHomeData = async (req, res) => {
     const updated = await HomeBanner.findByIdAndUpdate(
       _id,
       {
-        heading: heading || homeContent.heading || "Banner",
-        subheading: subheading || homeContent.subheading || "Banner",
+        heading,
+        subheading,
         poster: newPoster || poster || homeContent.poster,
       },
       { new: true },
