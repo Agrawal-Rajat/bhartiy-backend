@@ -34,6 +34,7 @@ const homeInsertController = async (req, res) => {
   try {
     const heading = req.body.heading || "";
     const subheading = req.body.subheading || "";
+    const link = req.body.link || "";
     let poster = null;
 
     if (req.files?.[0]?.buffer) {
@@ -54,6 +55,7 @@ const homeInsertController = async (req, res) => {
     const newHomeBanner = new HomeBanner({
       heading,
       subheading,
+      link,
       poster,
     });
 
@@ -90,6 +92,7 @@ const EditHomeData = async (req, res) => {
     const { _id, poster } = req.body;
     const heading = req.body.heading || "";
     const subheading = req.body.subheading || "";
+    const link = req.body.link || "";
     const homeContent = await HomeBanner.findById(_id);
 
     if (!homeContent) {
@@ -114,6 +117,7 @@ const EditHomeData = async (req, res) => {
       {
         heading,
         subheading,
+        link,
         poster: newPoster || poster || homeContent.poster,
       },
       { new: true },

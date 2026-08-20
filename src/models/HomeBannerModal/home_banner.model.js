@@ -4,6 +4,7 @@ const HomeBannerSchema = new mongoose.Schema(
   {
     heading: { type: String, default: "", trim: true },
     subheading: { type: String, default: "", trim: true },
+    link: { type: String, default: "", trim: true },
     poster: { type: String, required: true, trim: true },
   },
   { timestamps: true }
