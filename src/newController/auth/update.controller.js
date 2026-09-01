@@ -9,13 +9,12 @@ const userfiles = upload("userfile").fields([
 ]);
 
 
-const uploadToCloudinary = (fileBuffer, folder, resourceType = "image") => {
+const uploadToCloudinary = (fileBuffer, folder, resourceType = "auto") => {
   return new Promise((resolve, reject) => {
     const uploadStream = cloudinary.uploader.upload_stream(
       {
         folder,
         resource_type: resourceType,
-        type: "upload",
       },
       (error, result) => {
         if (error) return reject(error);
@@ -58,41 +57,45 @@ const UserUpdateController = async (req, res) => {
       });
     }
 
-    const age = calculateAge(dob);
-
-    if (age === null) {
-      return res.status(400).json({
-        success: false,
-        message: "Please provide a valid date of birth",
-      });
+    let age = user.age;
+    if (dob) {
+      age = calculateAge(dob);
+      if (age === null) {
+        return res.status(400).json({
+          success: false,
+          message: "Please provide a valid date of birth",
+        });
+      }
     }
 
-    const normalizedEmail = email.trim().toLowerCase();
+    const userEmail = (email || user.email || "").trim().toLowerCase();
 
-    const existingUser = await Auth.findOne({
-      email: normalizedEmail,
-      _id: { $ne: id },
-    });
-
-    if (existingUser) {
-      return res.status(409).json({
-        success: false,
-        message: "Another user already exists with this email",
+    if (userEmail && userEmail !== user.email) {
+      const existingUser = await Auth.findOne({
+        email: userEmail,
+        _id: { $ne: id },
       });
+
+      if (existingUser) {
+        return res.status(409).json({
+          success: false,
+          message: "Another user already exists with this email",
+        });
+      }
     }
 
     const updateData = {
-      address: address.trim(),
-      city: city.trim(),
-      username: username.trim(),
-      dob,
-      age,
-      email: normalizedEmail,
-      gender,
-      caste: caste.trim(),
-      bloodGroup: bloodGroup.trim(),
-      mobileNumber: mobileNumber.trim(),
-      short_desc: short_desc.trim(),
+      address: address !== undefined ? String(address).trim() : user.address,
+      city: city !== undefined ? String(city).trim() : user.city,
+      username: username !== undefined ? String(username).trim() : user.username,
+      dob: dob || user.dob,
+      age: age || user.age,
+      email: userEmail || user.email,
+      gender: gender || user.gender,
+      caste: caste !== undefined ? String(caste).trim() : (user.caste || ""),
+      bloodGroup: bloodGroup !== undefined ? String(bloodGroup).trim() : (user.bloodGroup || ""),
+      mobileNumber: mobileNumber !== undefined ? String(mobileNumber).trim() : user.mobileNumber,
+      short_desc: short_desc !== undefined ? String(short_desc).trim() : (user.short_desc || ""),
     };
 
     /* ================= PROFILE IMAGE ================= */
@@ -111,7 +114,7 @@ const UserUpdateController = async (req, res) => {
       const result = await uploadToCloudinary(
         req.files.resume[0].buffer,
         "bhartiy/resumes",
-        "image"
+        "auto"
       );
 
       updateData.resume = result.secure_url;
@@ -122,7 +125,7 @@ const UserUpdateController = async (req, res) => {
       const result = await uploadToCloudinary(
         req.files.biodata[0].buffer,
         "bhartiy/biodata",
-        "image"
+        "auto"
       );
 
       updateData.biodata = result.secure_url;

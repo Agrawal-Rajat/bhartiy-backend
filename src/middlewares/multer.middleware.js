@@ -10,7 +10,7 @@ export const upload = (folderName = "default") => {
   return multer({
     storage,
     limits: {
-      fileSize: 2 * 1024 * 1024, // 2MB
+      fileSize: 10 * 1024 * 1024, // 10MB
     },
   });
 };
