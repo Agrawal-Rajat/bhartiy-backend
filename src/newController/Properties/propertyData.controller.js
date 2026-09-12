@@ -161,14 +161,18 @@ const DeleteProperty = async (req, res) => {
     }
 
     if (property.poster) {
-      const publicId = getCloudinaryPublicId(property.poster);
-      if (publicId) {
-        await cloudinary.uploader.destroy(publicId);
+      try {
+        const publicId = getCloudinaryPublicId(property.poster);
+        if (publicId) {
+          await cloudinary.uploader.destroy(publicId);
+        }
+      } catch (cloudErr) {
+        console.warn("Cloudinary delete failed:", cloudErr.message);
       }
     }
 
     await Property.findByIdAndDelete(id);
-    res.status(201).json({ success: true, message: "Property  Deleting successfully" });
+    res.status(200).json({ success: true, message: "Property deleted successfully" });
   } catch (error) {
     console.error("Error Deleting property :", error);
     res.status(500).json({ success: false, message: "Error Deleting property ", error: error.message || error });
