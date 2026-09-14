@@ -14,7 +14,7 @@ authRouter.post("/login", loginController);
 authRouter.post("/adminlogin", AdminloginController);
 authRouter.post("/signup", SignUpController);
 authRouter.post("/verify", verifyToken, verify);
-authRouter.post('/logout', verifyToken, logoutController)
+authRouter.post('/logout', logoutController);
 authRouter.get("/getuserbyid/:id", GetUserById)
 authRouter.get("/getcount", StatsConuts)
 authRouter.put("/updateuser", verifyToken, userfiles, UserUpdateController)

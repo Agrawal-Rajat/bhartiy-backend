@@ -63,6 +63,14 @@ const AdminloginController = async (req, res) => {
       });
     }
 
+    // ✅ Check if account is active
+    if (user.status && user.status === "inactive") {
+      return res.status(403).json({
+        success: false,
+        message: "Your account is currently inactive. Please contact the administrator.",
+      });
+    }
+
     // ✅ Check JWT secret
     if (!process.env.JWT_SECRET) {
       return res.status(500).send({
@@ -71,11 +79,16 @@ const AdminloginController = async (req, res) => {
       });
     }
 
+    const userRole = user.role || "admin";
+    const userPermissions = user.permissions || ["matrimony", "matrimony_category"];
+
     // ✅ Generate JWT token
     const token = jwt.sign(
       {
         id: user._id,
         email: user.email,
+        role: userRole,
+        permissions: userPermissions,
       },
       process.env.JWT_SECRET,
       { expiresIn: "1d" }
@@ -101,6 +114,8 @@ const AdminloginController = async (req, res) => {
         username: user.username,
         email: user.email,
         auth_id: user._id,
+        role: userRole,
+        permissions: userPermissions,
       },
     });
   } catch (error) {

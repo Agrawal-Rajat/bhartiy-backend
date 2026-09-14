@@ -30,20 +30,29 @@ const verify = async (req, res) => {
       );
 
     if (!user) {
-      user=await Admin.findOne({email})
-      if(!user){
-      return res.status(404).json({ message: "User not found" });
+      user = await Admin.findOne({ email });
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
     }
-  }
+
+    if (user.status && user.status === "inactive") {
+      return res.status(403).json({ message: "Account is inactive" });
+    }
 
     console.log("✅ User verified successfully");
 
     // 4. Send response with user data
     res.status(200).json({
-      success:true,
+      success: true,
       message: "User verified successfully",
-      data:decoded
-});
+      data: {
+        ...decoded,
+        username: user.username,
+        role: user.role || decoded.role || "admin",
+        permissions: user.permissions || decoded.permissions || ["matrimony", "matrimony_category"],
+      },
+    });
 
   } catch (error) {
     console.error("Error verifying user:", error);
