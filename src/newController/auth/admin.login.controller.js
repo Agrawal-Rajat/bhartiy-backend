@@ -42,14 +42,21 @@ const AdminloginController = async (req, res) => {
       });
     }
 
-    // ✅ Find user by username (single object return karega)
-    var user = await Admin.findOne({ email: emailOrMobile });
+    const cleanEmail = emailOrMobile.trim().toLowerCase();
+    // ✅ Find user by email (case-insensitive and trimmed)
+    var user = await Admin.findOne({
+      $or: [
+        { email: cleanEmail },
+        { email: emailOrMobile.trim() },
+        { email: { $regex: new RegExp(`^${cleanEmail}$`, "i") } },
+      ],
+    });
     console.log(user)
     if (!user) {
 
       return res.status(404).json({
         success: false,
-        message: "User not found with this username",
+        message: "User not found with this username or email",
       });
 
     }
@@ -106,10 +113,11 @@ const AdminloginController = async (req, res) => {
       maxAge: 86400000, // 1 day
     });
 
-    // ✅ Send success response
+    // ✅ Send success response with token for mobile / cross-site fallback
     res.status(200).json({
       message: "Successfully logged in",
       success: true,
+      token: token,
       user: {
         username: user.username,
         email: user.email,

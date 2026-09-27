@@ -37,6 +37,9 @@ const allowedOrigins = [
   "http://localhost:5173",
   "https://bhartiy-frontend.vercel.app",
   "https://www.bhartiy.in",
+  "https://bhartiy.in",
+  "http://www.bhartiy.in",
+  "http://bhartiy.in",
 ];
 
 app.use(
