@@ -129,6 +129,10 @@ const UserUpdateController = async (req, res) => {
       );
 
       updateData.biodata = result.secure_url;
+      // When a user uploads biodata, it goes to admin/sub-admin for approval
+      updateData.status = "pending";
+      updateData.isAllViewers = false;
+      updateData.allowedViewers = [];
     }
 
     const updatedUser = await Auth.findByIdAndUpdate(id, updateData, {

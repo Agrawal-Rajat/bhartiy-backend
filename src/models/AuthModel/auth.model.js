@@ -20,6 +20,8 @@ const AuthSchema = new mongoose.Schema(
     profile_photo: { type: String, trim: true, default: "" },
     category: { type: mongoose.Schema.Types.Mixed, default: null },
     isAllCategories: { type: Boolean, default: false },
+    allowedViewers: [{ type: mongoose.Schema.Types.ObjectId, ref: "Auth" }],
+    isAllViewers: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

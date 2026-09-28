@@ -22,10 +22,12 @@ const uploadToCloudinary = (fileBuffer, folder, resourceType = "auto") => {
 
 const GetMetrimonialData = async (req, res) => {
   try {
-    const { page = 1, limit = 6, gender = "All", access, category } = req.query;
+    const { page = 1, limit = 6, gender = "All", access, category, currentUserId, status } = req.query;
     const pageNumber = parseInt(page);
     const limitPage = parseInt(limit);
     const skip = (pageNumber - 1) * limitPage;
+
+    const andConditions = [];
 
     // Base condition: biodata must exist
     let query = {
@@ -33,25 +35,68 @@ const GetMetrimonialData = async (req, res) => {
     };
 
     if (category && category !== "All") {
-      query.$or = [
-        { category: category },
-        { category: "All" },
-        { isAllCategories: true },
-      ];
+      andConditions.push({
+        $or: [
+          { category: category },
+          { category: "All" },
+          { isAllCategories: true },
+        ],
+      });
     }
 
     // Exclude gender if NOT "All"
     if (gender !== "All" && gender !== "other") {
       query.gender = { $ne: gender };
     }
+
     if (access === "user") {
       query.status = "approved";
+
+      // Viewer permission enforcement for portal users:
+      // Only users who are in allowedViewers, or the candidate themselves, or if admin explicitly made it public (isAllViewers: true)
+      let viewerId = currentUserId || req.user?.id;
+      if (!viewerId) {
+        const token =
+          req.cookies?.token ||
+          (req.headers?.authorization?.startsWith("Bearer ")
+            ? req.headers.authorization.split(" ")[1]
+            : null);
+        if (token && process.env.JWT_SECRET) {
+          try {
+            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+            viewerId = decoded?.id || decoded?._id;
+          } catch (e) {
+            // ignore invalid token
+          }
+        }
+      }
+
+      if (viewerId) {
+        andConditions.push({
+          $or: [
+            { isAllViewers: true },
+            { allowedViewers: viewerId },
+            { _id: viewerId }, // Candidate can always see their own biodata
+          ],
+        });
+      } else {
+        andConditions.push({
+          isAllViewers: true,
+        });
+      }
+    } else if (status && status !== "All") {
+      query.status = status;
+    }
+
+    if (andConditions.length > 0) {
+      query.$and = andConditions;
     }
 
     const totalRecords = await Auth.countDocuments(query);
 
     const data = await Auth.find(query)
-      .populate("category")
+      .populate({ path: "category", model: "matrimony_category" })
+      .populate({ path: "allowedViewers", model: "Auth", select: "username email mobileNumber gender city" })
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limitPage);
@@ -336,6 +381,54 @@ const DeleteBiodata = async (req, res) => {
   }
 };
 
+const updateBiodataConfig = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { category, isAllCategories, allowedViewers, isAllViewers, status } = req.body;
+
+    const updateFields = {};
+
+    if (category !== undefined) {
+      const isAll = category === "All" || category === "all" || !category;
+      updateFields.category = isAll ? "All" : category;
+      updateFields.isAllCategories = isAllCategories !== undefined ? isAllCategories : isAll;
+    }
+
+    if (allowedViewers !== undefined) {
+      updateFields.allowedViewers = Array.isArray(allowedViewers) ? allowedViewers : [];
+    }
+
+    if (isAllViewers !== undefined) {
+      updateFields.isAllViewers = Boolean(isAllViewers);
+    }
+
+    if (status !== undefined) {
+      updateFields.status = status;
+    }
+
+    const updated = await Auth.findByIdAndUpdate(id, updateFields, { new: true })
+      .populate({ path: "category", model: "matrimony_category" })
+      .populate({ path: "allowedViewers", model: "Auth", select: "username email mobileNumber gender city" });
+
+    if (!updated) {
+      return res.status(404).json({ success: false, message: "Profile not found" });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Biodata configuration updated successfully",
+      data: updated,
+    });
+  } catch (error) {
+    console.error("updateBiodataConfig Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: error.message,
+    });
+  }
+};
+
 export {
   GetMetrimonialData,
   AddIntrest,
@@ -346,4 +439,5 @@ export {
   insertMatrimonialProfile,
   DeleteMatrimonialProfile,
   DeleteBiodata,
+  updateBiodataConfig,
 };

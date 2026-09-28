@@ -1,81 +1,65 @@
-// controllers/AuthController.js
 import nodemailer from "nodemailer";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import Auth from "../models/AuthModel/auth.model.js";
-import { google } from "googleapis";
 
 dotenv.config();
 
-// ✅ Setup OAuth2 Client
-const oAuth2Client = new google.auth.OAuth2(
-  process.env.CLIENT_ID,      // From Google Cloud
-  process.env.CLIENT_SECRET,  // From Google Cloud
-  "https://developers.google.com/oauthplayground" // Redirect URI
-);
+// Function to create transporter (Brevo SMTP preferred for Render, with Gmail fallback)
+function createTransporter() {
+  const brevoUser =
+    process.env.BREVO_SMTP_USER ||
+    process.env.BREVO_LOGIN ||
+    "bb6c13001@smtp-brevo.com";
+  const brevoKey =
+    process.env.BREVO_SMTP_KEY ||
+    process.env.BREVO_PASSWORD ||
+    process.env.EMAIL_PASS;
+  const brevoHost = process.env.BREVO_SMTP_SERVER || "smtp-relay.brevo.com";
+  const brevoPort = parseInt(process.env.BREVO_SMTP_PORT || "587", 10);
 
-// ✅ Refresh Token from Playground (optional)
-if (process.env.REFRESH_TOKEN) {
-  oAuth2Client.setCredentials({
-    refresh_token: process.env.REFRESH_TOKEN,
-  });
-}
-
-// ✅ Function to create transporter with OAuth2 fallback
-async function createTransporter() {
-  try {
-    if (process.env.REFRESH_TOKEN) {
-      // 🔹 Try OAuth2 first
-      const accessToken = await oAuth2Client.getAccessToken();
-
-      return nodemailer.createTransport({
-        service: "gmail",
-        auth: {
-          type: "OAuth2",
-          user: process.env.EMAIL_USER,
-          clientId: process.env.CLIENT_ID,
-          clientSecret: process.env.CLIENT_SECRET,
-          refreshToken: process.env.REFRESH_TOKEN,
-          accessToken: accessToken?.token,
-        },
-      });
-    } else {
-      throw new Error("No refresh token, falling back to App Password");
-    }
-  } catch (error) {
-    console.warn("⚠️ OAuth2 failed, falling back to App Password mode:", error.message);
-
-    // 🔹 Use App Password fallback
+  // If Brevo SMTP is configured
+  if (brevoKey && !brevoKey.includes("your_gmail") && !brevoKey.includes("your_brevo")) {
     return nodemailer.createTransport({
-      service: "gmail",
+      host: brevoHost,
+      port: brevoPort,
+      secure: false, // port 587 uses STARTTLS
       auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS, // App Password (not Gmail login password!)
+        user: brevoUser,
+        pass: brevoKey,
+      },
+      tls: {
+        rejectUnauthorized: true,
       },
     });
   }
+
+  // Fallback to standard Gmail SMTP
+  return nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,
+    },
+  });
 }
 
-// ✅ Helper: Convert number & token into query string
 function numberToTokenQuery(token, number) {
   const chars = number.toString().split("");
   const tokenParts = chars.map((digit, index) => `d${index}=${digit}`);
   return `?token=${encodeURIComponent(token)}&` + tokenParts.join("&");
 }
 
-// ✅ Controller function
 export const SendEmail = async (req, res) => {
   try {
     const { Email, subject, description, link } = req.body;
 
-    // ✅ Fetch user from MongoDB
     const user = await Auth.findOne({ email: Email });
 
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // ✅ Generate JWT token
     const token = jwt.sign(
       { userId: user._id, email: user.email },
       process.env.JWT_SECRET,
@@ -84,20 +68,24 @@ export const SendEmail = async (req, res) => {
 
     const tokentosend = numberToTokenQuery(token, user._id);
 
-    // ✅ Set token cookie
     res.cookie("token", token, {
       httpOnly: true,
       secure: true,
       sameSite: "Strict",
-      maxAge: 3600000, // 1h
+      maxAge: 3600000,
     });
 
-    // ✅ Create transporter (OAuth2 → App Password fallback)
-    const transporter = await createTransporter();
+    const transporter = createTransporter();
 
-    // ✅ Send email
+    const senderEmail =
+      process.env.BREVO_SENDER_EMAIL ||
+      process.env.SENDER_EMAIL ||
+      process.env.EMAIL_USER ||
+      "contact@bhartiy.in";
+    const senderName = process.env.SENDER_NAME || "BhartIY";
+
     const info = await transporter.sendMail({
-      from: `"MII [Medicaps Innovation And Incubation] Foundation" <${process.env.EMAIL_USER}>`,
+      from: `"${senderName}" <${senderEmail}>`,
       to: Email,
       subject,
       text: description,

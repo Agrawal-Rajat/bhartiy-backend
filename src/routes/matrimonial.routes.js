@@ -11,6 +11,7 @@ import {
   insertMatrimonialProfile,
   DeleteMatrimonialProfile,
   DeleteBiodata,
+  updateBiodataConfig,
 } from "../newController/MatrimonialData/matrimonial.controller.js";
 
 const MatrimonialRouter = Router();
@@ -31,5 +32,6 @@ MatrimonialRouter.put("/updatestatusofprofilelikers", verifyToken, updateStatusO
 MatrimonialRouter.post("/insertmatrimonialprofile", verifyToken, MatrimonialFiles, insertMatrimonialProfile);
 MatrimonialRouter.delete("/deletematrimonialprofile/:id", verifyToken, DeleteMatrimonialProfile);
 MatrimonialRouter.delete("/deletebiodata/:id", verifyToken, DeleteBiodata);
+MatrimonialRouter.put("/update-biodata-config/:id", verifyToken, updateBiodataConfig);
 
 export { MatrimonialRouter };
