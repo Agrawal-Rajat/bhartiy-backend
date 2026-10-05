@@ -3,6 +3,7 @@ import dotenv from "dotenv";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import bodyParser from "body-parser";
+import mongoose from "mongoose";
 
 import { authRouter } from "./src/routes/auth.routes.js";
 import { JobCategoryRoute } from "./src/routes/job_category.routes.js";
@@ -63,11 +64,25 @@ app.use(express.json());
 app.use(cookieParser());
 
 
-app.get("/", async (req, resp) => {
-  const res = await connectDb()
-  // console.log(res)
-  return resp.send(res)
-})
+// Health Check Routes for UptimeRobot / Monitoring
+const healthCheckHandler = (req, res) => {
+  const isDbConnected = mongoose.connection.readyState === 1;
+  return res.status(200).json({
+    status: "OK",
+    message: "Server is healthy",
+    uptime: Math.floor(process.uptime()),
+    database: isDbConnected ? "connected" : "disconnected",
+    timestamp: new Date().toISOString(),
+  });
+};
+
+app.get("/health", healthCheckHandler);
+app.head("/health", (req, res) => res.status(200).end());
+app.get("/api/health", healthCheckHandler);
+app.head("/api/health", (req, res) => res.status(200).end());
+
+app.get("/", healthCheckHandler);
+app.head("/", (req, res) => res.status(200).end());
 
 app.use("/api/auth", authRouter);
 app.use("/api/jobcategory", JobCategoryRoute);
