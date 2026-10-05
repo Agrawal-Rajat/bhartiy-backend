@@ -34,6 +34,16 @@ const populateCategoriesForProfiles = async (profiles) => {
     } else if (cat && typeof cat === "object" && cat._id) {
       categoryIds.push(cat._id);
     }
+
+    if (Array.isArray(doc.allowedCategories)) {
+      for (const ac of doc.allowedCategories) {
+        if (ac && typeof ac === "string" && mongoose.Types.ObjectId.isValid(ac) && ac.length === 24) {
+          categoryIds.push(ac);
+        } else if (ac && typeof ac === "object" && ac._id) {
+          categoryIds.push(ac._id);
+        }
+      }
+    }
   }
 
   if (categoryIds.length > 0) {
@@ -46,6 +56,15 @@ const populateCategoriesForProfiles = async (profiles) => {
         doc.category = categoryMap.get(cat);
       } else if (cat && typeof cat === "object" && cat._id && categoryMap.has(cat._id.toString())) {
         doc.category = categoryMap.get(cat._id.toString());
+      }
+
+      if (Array.isArray(doc.allowedCategories)) {
+        doc.allowedCategories = doc.allowedCategories
+          .map((ac) => {
+            const idStr = typeof ac === "object" && ac._id ? ac._id.toString() : ac?.toString();
+            return categoryMap.get(idStr) || ac;
+          })
+          .filter(Boolean);
       }
     }
   }
@@ -72,9 +91,13 @@ const GetMetrimonialData = async (req, res) => {
         { category: category },
         { category: "All" },
         { isAllCategories: true },
+        { isAllViewers: true },
+        { allowedCategories: category },
       ];
       if (mongoose.Types.ObjectId.isValid(category) && category.length === 24) {
-        catOrConditions.push({ category: new mongoose.Types.ObjectId(category) });
+        const catObjId = new mongoose.Types.ObjectId(category);
+        catOrConditions.push({ category: catObjId });
+        catOrConditions.push({ allowedCategories: catObjId });
       }
       andConditions.push({
         $or: catOrConditions,
@@ -89,8 +112,6 @@ const GetMetrimonialData = async (req, res) => {
     if (access === "user") {
       query.status = "approved";
 
-      // Viewer permission enforcement for portal users:
-      // Only users who are in allowedViewers, or the candidate themselves, or if admin explicitly made it public (isAllViewers: true)
       let viewerId = currentUserId || req.user?.id;
       if (!viewerId) {
         const token =
@@ -108,18 +129,21 @@ const GetMetrimonialData = async (req, res) => {
         }
       }
 
-      if (viewerId) {
-        andConditions.push({
-          $or: [
-            { isAllViewers: true },
-            { allowedViewers: viewerId },
-            { _id: viewerId }, // Candidate can always see their own biodata
-          ],
-        });
-      } else {
-        andConditions.push({
-          isAllViewers: true,
-        });
+      // If user is browsing "All Categories":
+      // Show profiles that are public across all categories (isAllViewers: true OR isAllCategories: true OR category: "All" OR allowedCategories is empty)
+      // or if viewer is the candidate themselves
+      if (!category || category === "All") {
+        const allTabConditions = [
+          { isAllViewers: true },
+          { isAllCategories: true },
+          { category: "All" },
+          { allowedCategories: { $size: 0 } },
+        ];
+        if (viewerId) {
+          allTabConditions.push({ _id: viewerId });
+          allTabConditions.push({ allowedViewers: viewerId });
+        }
+        andConditions.push({ $or: allTabConditions });
       }
     } else if (status && status !== "All") {
       query.status = status;
@@ -425,7 +449,7 @@ const DeleteBiodata = async (req, res) => {
 const updateBiodataConfig = async (req, res) => {
   try {
     const { id } = req.params;
-    const { category, isAllCategories, allowedViewers, isAllViewers, status } = req.body;
+    const { category, isAllCategories, allowedCategories, allowedViewers, isAllViewers, status } = req.body;
 
     const updateFields = {};
 
@@ -433,6 +457,12 @@ const updateBiodataConfig = async (req, res) => {
       const isAll = category === "All" || category === "all" || !category;
       updateFields.category = isAll ? "All" : category;
       updateFields.isAllCategories = isAllCategories !== undefined ? isAllCategories : isAll;
+    }
+
+    if (allowedCategories !== undefined) {
+      updateFields.allowedCategories = Array.isArray(allowedCategories)
+        ? allowedCategories.filter((c) => mongoose.Types.ObjectId.isValid(c) && String(c).length === 24)
+        : [];
     }
 
     if (allowedViewers !== undefined) {
