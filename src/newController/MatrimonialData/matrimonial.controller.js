@@ -1,7 +1,10 @@
 import Auth from "../../models/AuthModel/auth.model.js";
 import MatrimonialApplies from "../../models/MatrimonialApplies/matrimonial_applies.model.js";
+import MatrimonyCategory from "../../models/MatrimonyCategoryModel/matrimony.category.model.js";
 import cloudinary from "../../config/cloudinary.js";
 import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
 
 const uploadToCloudinary = (fileBuffer, folder, resourceType = "auto") => {
   return new Promise((resolve, reject) => {
@@ -20,6 +23,36 @@ const uploadToCloudinary = (fileBuffer, folder, resourceType = "auto") => {
   });
 };
 
+const populateCategoriesForProfiles = async (profiles) => {
+  if (!profiles || !profiles.length) return profiles;
+
+  const categoryIds = [];
+  for (const doc of profiles) {
+    const cat = doc.category;
+    if (cat && typeof cat === "string" && mongoose.Types.ObjectId.isValid(cat) && cat.length === 24) {
+      categoryIds.push(cat);
+    } else if (cat && typeof cat === "object" && cat._id) {
+      categoryIds.push(cat._id);
+    }
+  }
+
+  if (categoryIds.length > 0) {
+    const categories = await MatrimonyCategory.find({ _id: { $in: categoryIds } }).lean();
+    const categoryMap = new Map(categories.map((c) => [c._id.toString(), c]));
+
+    for (const doc of profiles) {
+      const cat = doc.category;
+      if (cat && typeof cat === "string" && categoryMap.has(cat)) {
+        doc.category = categoryMap.get(cat);
+      } else if (cat && typeof cat === "object" && cat._id && categoryMap.has(cat._id.toString())) {
+        doc.category = categoryMap.get(cat._id.toString());
+      }
+    }
+  }
+
+  return profiles;
+};
+
 const GetMetrimonialData = async (req, res) => {
   try {
     const { page = 1, limit = 6, gender = "All", access, category, currentUserId, status } = req.query;
@@ -35,12 +68,16 @@ const GetMetrimonialData = async (req, res) => {
     };
 
     if (category && category !== "All") {
+      const catOrConditions = [
+        { category: category },
+        { category: "All" },
+        { isAllCategories: true },
+      ];
+      if (mongoose.Types.ObjectId.isValid(category) && category.length === 24) {
+        catOrConditions.push({ category: new mongoose.Types.ObjectId(category) });
+      }
       andConditions.push({
-        $or: [
-          { category: category },
-          { category: "All" },
-          { isAllCategories: true },
-        ],
+        $or: catOrConditions,
       });
     }
 
@@ -94,12 +131,14 @@ const GetMetrimonialData = async (req, res) => {
 
     const totalRecords = await Auth.countDocuments(query);
 
-    const data = await Auth.find(query)
-      .populate({ path: "category", model: "matrimony_category" })
+    const rawData = await Auth.find(query)
       .populate({ path: "allowedViewers", model: "Auth", select: "username email mobileNumber gender city" })
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(limitPage);
+      .limit(limitPage)
+      .lean();
+
+    const data = await populateCategoriesForProfiles(rawData);
 
     return res.status(200).json({
       success: true,
@@ -296,7 +335,8 @@ const insertMatrimonialProfile = async (req, res) => {
       existingUser.status = "approved";
 
       await existingUser.save();
-      const populated = await Auth.findById(existingUser._id).populate("category");
+      const userDoc = await Auth.findById(existingUser._id).lean();
+      const [populated] = await populateCategoriesForProfiles([userDoc]);
       return res.status(200).json({
         success: true,
         message: "Matrimonial profile updated successfully",
@@ -325,7 +365,8 @@ const insertMatrimonialProfile = async (req, res) => {
       });
 
       await newUser.save();
-      const populated = await Auth.findById(newUser._id).populate("category");
+      const userDoc = await Auth.findById(newUser._id).lean();
+      const [populated] = await populateCategoriesForProfiles([userDoc]);
       return res.status(201).json({
         success: true,
         message: "Matrimonial profile and biodata created successfully",
@@ -407,17 +448,19 @@ const updateBiodataConfig = async (req, res) => {
     }
 
     const updated = await Auth.findByIdAndUpdate(id, updateFields, { new: true })
-      .populate({ path: "category", model: "matrimony_category" })
-      .populate({ path: "allowedViewers", model: "Auth", select: "username email mobileNumber gender city" });
+      .populate({ path: "allowedViewers", model: "Auth", select: "username email mobileNumber gender city" })
+      .lean();
 
     if (!updated) {
       return res.status(404).json({ success: false, message: "Profile not found" });
     }
 
+    const [populated] = await populateCategoriesForProfiles([updated]);
+
     return res.status(200).json({
       success: true,
       message: "Biodata configuration updated successfully",
-      data: updated,
+      data: populated,
     });
   } catch (error) {
     console.error("updateBiodataConfig Error:", error);
