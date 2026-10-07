@@ -173,10 +173,10 @@ export const resetUserPassword = async (req, res) => {
       });
     }
 
-    if (newPassword.length < 8) {
+    if (newPassword.length < 4) {
       return res.status(400).json({
         success: false,
-        message: "Password must be at least 8 characters long.",
+        message: "Password must be at least 4 characters long.",
       });
     }
 
