@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { logoutController } from "../newController/auth/logout.controller.js";
-import { verifyToken } from "../middlewares/auth.middleware.js";
+import { verifyToken, requireAdmin } from "../middlewares/auth.middleware.js";
 import {
   GetUserById,
   loginController,
@@ -20,6 +20,7 @@ import {
   verifyForgotPasswordOtp,
   resetUserPassword,
 } from "../newController/auth/forgotPassword.controller.js";
+import { exportUsersToCsv } from "../newController/auth/exportUsers.controller.js";
 
 const authRouter = Router();
 
@@ -32,7 +33,11 @@ authRouter.get("/getuserbyid/:id", GetUserById);
 authRouter.get("/getcount", StatsConuts);
 authRouter.put("/updateuser", verifyToken, userfiles, UserUpdateController);
 authRouter.put("/updateuserstatus", verifyToken, UpdateUserStatus);
-authRouter.get("/getallusers", verifyToken, GetAllUsers);
+
+// Admin-only user management & export routes
+authRouter.get("/getallusers", verifyToken, requireAdmin, GetAllUsers);
+authRouter.get("/export-users-csv", verifyToken, requireAdmin, exportUsersToCsv);
+authRouter.get("/exportuserscsv", verifyToken, requireAdmin, exportUsersToCsv);
 
 // User-only forgot password & OTP reset flow
 authRouter.post("/forgot-password/send-otp", sendForgotPasswordOtp);
@@ -40,3 +45,4 @@ authRouter.post("/forgot-password/verify-otp", verifyForgotPasswordOtp);
 authRouter.post("/forgot-password/reset-password", resetUserPassword);
 
 export { authRouter };
+
