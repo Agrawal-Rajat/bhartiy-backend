@@ -1,4 +1,6 @@
-import Auth from "../../models/AuthModel/auth.model.js"
+import Auth from "../../models/AuthModel/auth.model.js";
+import MatrimonyCategory from "../../models/MatrimonyCategoryModel/matrimony.category.model.js";
+import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import dotenv from 'dotenv';
@@ -90,7 +92,21 @@ const loginController = async (req, res) => {
 export const GetUserById = async (req, res) => {
   try {
     const { id } = req.params;
-    const user = await Auth.findById(id).select("-password");
+    const user = await Auth.findById(id).select("-password").lean();
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    if (user.category && user.category !== "All" && mongoose.Types.ObjectId.isValid(user.category)) {
+      const categoryDoc = await MatrimonyCategory.findById(user.category).lean();
+      if (categoryDoc) {
+        user.categoryDetails = categoryDoc;
+      }
+    }
+
     res.status(200).json({
       success: true,
       user: user
@@ -103,8 +119,7 @@ export const GetUserById = async (req, res) => {
       error: error.message || error
     });
   }
-
-}
+};
 
 export const GetAllUsers = async (req, res) => {
   try {

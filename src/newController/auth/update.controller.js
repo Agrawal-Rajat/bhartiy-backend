@@ -1,4 +1,6 @@
 import Auth from "../../models/AuthModel/auth.model.js";
+import MatrimonyCategory from "../../models/MatrimonyCategoryModel/matrimony.category.model.js";
+import mongoose from "mongoose";
 import { upload } from "../../middlewares/multer.middleware.js";
 import { calculateAge } from "./signup.controller.js";
 import cloudinary from "../../config/cloudinary.js";
@@ -39,7 +41,8 @@ const UserUpdateController = async (req, res) => {
       caste,
       bloodGroup,
       mobileNumber,
-      short_desc
+      short_desc,
+      category,
     } = req.body;
 
     if (!id) {
@@ -98,6 +101,30 @@ const UserUpdateController = async (req, res) => {
       short_desc: short_desc !== undefined ? String(short_desc).trim() : (user.short_desc || ""),
     };
 
+    /* ================= MATRIMONY CATEGORY ================= */
+    if (category !== undefined) {
+      const cleanCat = String(category).trim();
+      if (!cleanCat || cleanCat === "" || cleanCat === "null" || cleanCat === "undefined") {
+        updateData.category = null;
+        updateData.isAllCategories = false;
+      } else if (cleanCat === "All" || cleanCat.toLowerCase() === "all") {
+        updateData.category = "All";
+        updateData.isAllCategories = true;
+      } else {
+        updateData.category = cleanCat;
+        updateData.isAllCategories = false;
+      }
+
+      // If user changed their category on an already approved profile with biodata, require admin re-verification
+      if (
+        user.biodata &&
+        user.status === "approved" &&
+        String(user.category || "").trim() !== String(updateData.category || "").trim()
+      ) {
+        updateData.status = "pending";
+      }
+    }
+
     /* ================= PROFILE IMAGE ================= */
     if (req.files?.profile_photo?.[0]) {
       const result = await uploadToCloudinary(
@@ -142,6 +169,13 @@ const UserUpdateController = async (req, res) => {
 
     const safeUser = updatedUser.toObject();
     delete safeUser.password;
+
+    if (safeUser.category && safeUser.category !== "All" && mongoose.Types.ObjectId.isValid(safeUser.category)) {
+      const categoryDoc = await MatrimonyCategory.findById(safeUser.category).lean();
+      if (categoryDoc) {
+        safeUser.categoryDetails = categoryDoc;
+      }
+    }
 
     return res.status(200).json({
       success: true,
