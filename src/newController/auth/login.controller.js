@@ -6,29 +6,47 @@ import jwt from "jsonwebtoken";
 import dotenv from 'dotenv';
 dotenv.config();
 
+const escapeRegex = (str) => {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+};
+
 const loginController = async (req, res) => {
-  console.log('In login Controller')
+  console.log("In login Controller");
   try {
-    const { emailOrMobile, password } = req.body;
-    // console.log(req.body)
-    if (!emailOrMobile || !password) {
+    const { identifier, emailOrMobile, email, username, password } = req.body;
+    const loginInput = (identifier || emailOrMobile || email || username || "").trim();
+
+    if (!loginInput || !password) {
       return res.status(400).json({
         success: false,
-        message: "All fields are required",
+        message: "Username or email and password are required",
       });
     }
 
-    // ✅ Find user by username (single object return karega)
-    var user = await Auth.findOne({ email: emailOrMobile });
-    console.log(user)
+    const normalizedInput = loginInput.toLowerCase();
+    const escapedInput = escapeRegex(loginInput);
+
+    // Find user by email OR username (case-insensitive and trimmed), with mobile fallback
+    const user = await Auth.findOne({
+      $or: [
+        { email: normalizedInput },
+        { email: loginInput },
+        { email: { $regex: new RegExp(`^${escapedInput}$`, "i") } },
+        { username: loginInput },
+        { username: { $regex: new RegExp(`^${escapedInput}$`, "i") } },
+        { mobileNumber: loginInput },
+      ],
+    });
+
+    console.log("Found user for login:", user ? user.email : "none");
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: "User not found with this username",
+        message: "User not found with this username or email",
       });
     }
 
-    // ✅ Compare entered password with hashed password
+    // Compare entered password with hashed password
     const comparePassword = await bcrypt.compare(password, user.password);
     if (!comparePassword) {
       return res.status(400).json({
@@ -37,7 +55,7 @@ const loginController = async (req, res) => {
       });
     }
 
-    // ✅ Check JWT secret
+    // Check JWT secret
     if (!process.env.JWT_SECRET) {
       return res.status(500).send({
         message: "JWT secret is not set in the environment variables",
@@ -45,38 +63,36 @@ const loginController = async (req, res) => {
       });
     }
 
-    // ✅ Generate JWT token
+    // Generate JWT token
     const token = jwt.sign(
       {
         id: user._id,
-        email: user.email,
+        email: user.email || "",
+        username: user.username,
         age: user?.age,
-        gender: user?.gender
+        gender: user?.gender,
       },
       process.env.JWT_SECRET,
       { expiresIn: "1d" }
     );
-    // console.log(token)
 
-    // ✅ Set cookie
+    // Set cookie
     res.cookie("token", token, {
       httpOnly: true,
-      // secure: process.env.NODE_ENV === "production", // works in dev & prod
       secure: true,
       sameSite: "None", // allow cross-site cookies
-      // secure: false,
-      // sameSite: "lax", // CSRF protection
       maxAge: 86400000, // 1 day
     });
 
-    // ✅ Send success response
+    // Send success response
     res.status(200).json({
       message: "Successfully logged in",
       success: true,
       token: token,
       user: {
         username: user.username,
-        email: user.email,
+        name: user.name || user.username,
+        email: user.email || "",
         auth_id: user._id,
       },
     });

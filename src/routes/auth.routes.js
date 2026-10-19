@@ -8,7 +8,7 @@ import {
   GetAllUsers,
 } from "../newController/auth/login.controller.js";
 import { verify } from "../utils/verify.js";
-import { SignUpController } from "../newController/auth/signup.controller.js";
+import { SignUpController, checkUsernameAvailability } from "../newController/auth/signup.controller.js";
 import {
   userfiles,
   UserUpdateController,
@@ -27,6 +27,7 @@ const authRouter = Router();
 authRouter.post("/login", loginController);
 authRouter.post("/adminlogin", AdminloginController);
 authRouter.post("/signup", SignUpController);
+authRouter.get("/check-username/:username", checkUsernameAvailability);
 authRouter.post("/verify", verifyToken, verify);
 authRouter.post("/logout", logoutController);
 authRouter.get("/getuserbyid/:id", GetUserById);

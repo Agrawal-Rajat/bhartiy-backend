@@ -2,8 +2,9 @@ import mongoose from "mongoose";
 
 const AuthSchema = new mongoose.Schema(
   {
+    name: { type: String, trim: true, default: "" },
     username: { type: String, default: "Candidate Profile", trim: true },
-    email: { type: String, required: true, unique: true },
+    email: { type: String, default: null, trim: true },
     password: { type: String, default: "" }, // should be hashed
     address: { type: String, default: "" },
     city: { type: String, default: "", trim: true },

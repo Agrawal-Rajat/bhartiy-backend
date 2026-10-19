@@ -51,13 +51,18 @@ const verify = async (req, res) => {
 
     // Otherwise or if not found, check Auth model
     if (!user) {
-      user = await Auth.findOne({
-        $or: [
-          { email: cleanEmail },
-          { email: email },
-          { email: { $regex: new RegExp(`^${cleanEmail}$`, "i") } }
-        ]
-      });
+      if (decoded.id) {
+        user = await Auth.findById(decoded.id);
+      }
+      if (!user) {
+        user = await Auth.findOne({
+          $or: [
+            { email: cleanEmail },
+            { email: email },
+            { email: { $regex: new RegExp(`^${cleanEmail}$`, "i") } }
+          ]
+        });
+      }
     }
 
     // Fallback check Admin model if not yet found
@@ -88,6 +93,7 @@ const verify = async (req, res) => {
       data: {
         ...decoded,
         username: user.username,
+        name: user.name || user.username,
         role: user.role || decoded.role || "admin",
         permissions: user.permissions || decoded.permissions || ["matrimony", "matrimony_category"],
       },

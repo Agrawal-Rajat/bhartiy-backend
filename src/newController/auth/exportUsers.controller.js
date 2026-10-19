@@ -27,6 +27,7 @@ export const exportUsersToCsv = async (req, res) => {
       "S.No",
       "User ID",
       "Name",
+      "Username",
       "Email",
       "Mobile Number",
       "Gender",
@@ -110,6 +111,7 @@ export const exportUsersToCsv = async (req, res) => {
       return [
         escapeCsv(index + 1),
         escapeCsv(u._id),
+        escapeCsv(u.name || u.username || ""),
         escapeCsv(u.username || ""),
         escapeCsv(u.email || ""),
         escapeCsv(u.mobileNumber || ""),

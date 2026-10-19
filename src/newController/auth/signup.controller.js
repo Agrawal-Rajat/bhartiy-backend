@@ -23,18 +23,176 @@ export const calculateAge = (dob) => {
   return age;
 };
 
+const escapeRegex = (str) => {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+};
+
+export const checkUsernameAvailability = async (req, res) => {
+  try {
+    const rawUsername = (req.params.username || "").trim();
+
+    if (!rawUsername || rawUsername.length < 3) {
+      return res.status(400).json({
+        success: false,
+        available: false,
+        message: "Username must be at least 3 characters",
+      });
+    }
+
+    if (!/^[a-zA-Z0-9_.-]+$/.test(rawUsername)) {
+      return res.status(400).json({
+        success: false,
+        available: false,
+        message: "Only letters, numbers, underscores (_), dots (.), and hyphens (-) are allowed without spaces",
+      });
+    }
+
+    const escaped = escapeRegex(rawUsername);
+    const existing = await Auth.findOne({
+      username: { $regex: new RegExp(`^${escaped}$`, "i") },
+    });
+
+    if (existing) {
+      return res.status(200).json({
+        success: true,
+        available: false,
+        message: "Username is already taken",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      available: true,
+      message: "Username is available",
+    });
+  } catch (error) {
+    console.error("Error checking username availability:", error);
+    return res.status(500).json({
+      success: false,
+      available: false,
+      message: "Error checking username availability",
+    });
+  }
+};
+
 const SignUpController = async (req, res) => {
   try {
-    const { email, password, address, city, bloodGroup, name, gender, dob, mobile } = req.body;
+    const {
+      email,
+      password,
+      address,
+      city,
+      bloodGroup,
+      name,
+      username,
+      gender,
+      dob,
+      mobile,
+    } = req.body;
 
-    if (!email || !password || !address || !city || !bloodGroup || !name || !gender || !dob || !mobile) {
+    if (
+      !password ||
+      !address ||
+      !city ||
+      !bloodGroup ||
+      !name ||
+      !gender ||
+      !dob ||
+      !mobile
+    ) {
       return res.status(400).json({
         success: false,
         message: "All fields are required",
       });
     }
 
-    const normalizedEmail = email.trim().toLowerCase();
+    const rawUsername = (username || "").trim();
+    const rawEmail = (email || "").trim().toLowerCase();
+
+    // At least one of username or email must be provided
+    if (!rawUsername && !rawEmail) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide either a username or an email address",
+      });
+    }
+
+    let cleanUsername = "";
+    let cleanEmail = null;
+
+    // 1. Process username if provided, or generate a unique handle if only email was provided
+    if (rawUsername) {
+      if (rawUsername.length < 3) {
+        return res.status(400).json({
+          success: false,
+          message: "Username must be at least 3 characters long",
+        });
+      }
+
+      if (!/^[a-zA-Z0-9_.-]+$/.test(rawUsername)) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Username can only contain letters, numbers, underscores (_), dots (.), and hyphens (-) without spaces",
+        });
+      }
+
+      // Check if username is already taken (case-insensitive)
+      const escaped = escapeRegex(rawUsername);
+      const existingUserWithUsername = await Auth.findOne({
+        username: { $regex: new RegExp(`^${escaped}$`, "i") },
+      });
+
+      if (existingUserWithUsername) {
+        return res.status(409).json({
+          success: false,
+          message: "Username is already taken. Please choose another username.",
+        });
+      }
+
+      cleanUsername = rawUsername;
+    } else {
+      // User provided email only -> generate friendly unique username
+      let base = (name || rawEmail.split("@")[0] || "user")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-zA-Z0-9_.-]/g, "_")
+        .replace(/_+/g, "_");
+      if (base.length < 3) base = "user_" + base;
+
+      let candidate = base;
+      const escapedCandidate = escapeRegex(candidate);
+      let existingCandidate = await Auth.findOne({
+        username: { $regex: new RegExp(`^${escapedCandidate}$`, "i") },
+      });
+
+      if (existingCandidate) {
+        candidate = `${base}_${Math.floor(1000 + Math.random() * 9000)}`;
+      }
+      cleanUsername = candidate;
+    }
+
+    // 2. Process email if provided
+    if (rawEmail) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(rawEmail)) {
+        return res.status(400).json({
+          success: false,
+          message: "Please provide a valid email address",
+        });
+      }
+
+      const existingUserWithEmail = await Auth.findOne({ email: rawEmail });
+      if (existingUserWithEmail) {
+        return res.status(409).json({
+          success: false,
+          message: "User already exists with this email",
+        });
+      }
+
+      cleanEmail = rawEmail;
+    }
+
     const age = calculateAge(dob);
 
     if (age === null) {
@@ -51,33 +209,36 @@ const SignUpController = async (req, res) => {
       });
     }
 
-    const existingUser = await Auth.findOne({ email: normalizedEmail });
-
-    if (existingUser) {
-      return res.status(409).json({
-        success: false,
-        message: "User already exists with this email",
-      });
-    }
-
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    await Auth.create({
-      email: normalizedEmail,
+    const createPayload = {
+      name: name.trim(),
+      username: cleanUsername,
       password: hashedPassword,
-      mobileNumber: mobile,
+      mobileNumber: mobile.trim(),
       gender,
       dob,
-      address,
-      city,
+      address: address.trim(),
+      city: city.trim(),
       bloodGroup,
-      username: name,
       age,
-    });
+    };
+
+    if (cleanEmail) {
+      createPayload.email = cleanEmail;
+    }
+
+    const newUser = await Auth.create(createPayload);
 
     return res.status(201).json({
       success: true,
       message: "Account created successfully",
+      user: {
+        id: newUser._id,
+        name: newUser.name,
+        username: newUser.username,
+        email: newUser.email,
+      },
     });
   } catch (error) {
     console.error("Signup error:", error);

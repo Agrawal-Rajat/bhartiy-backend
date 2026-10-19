@@ -32,6 +32,7 @@ const UserUpdateController = async (req, res) => {
   try {
     const {
       id,
+      name,
       address,
       city,
       username,
@@ -87,10 +88,44 @@ const UserUpdateController = async (req, res) => {
       }
     }
 
+    let updatedUsername = user.username;
+    if (username !== undefined) {
+      const cleanUsername = String(username).trim();
+      if (cleanUsername && cleanUsername !== user.username) {
+        if (cleanUsername.length < 3) {
+          return res.status(400).json({
+            success: false,
+            message: "Username must be at least 3 characters",
+          });
+        }
+        if (!/^[a-zA-Z0-9_.-]+$/.test(cleanUsername)) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Username can only contain letters, numbers, underscores (_), dots (.), and hyphens (-) without spaces",
+          });
+        }
+        const escaped = cleanUsername.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const existingUsernameUser = await Auth.findOne({
+          username: { $regex: new RegExp(`^${escaped}$`, "i") },
+          _id: { $ne: id },
+        });
+
+        if (existingUsernameUser) {
+          return res.status(409).json({
+            success: false,
+            message: "Another user already has this username",
+          });
+        }
+        updatedUsername = cleanUsername;
+      }
+    }
+
     const updateData = {
+      name: name !== undefined ? String(name).trim() : (user.name || ""),
       address: address !== undefined ? String(address).trim() : user.address,
       city: city !== undefined ? String(city).trim() : user.city,
-      username: username !== undefined ? String(username).trim() : user.username,
+      username: updatedUsername,
       dob: dob || user.dob,
       age: age || user.age,
       email: userEmail || user.email,
