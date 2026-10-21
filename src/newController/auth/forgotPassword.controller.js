@@ -13,23 +13,52 @@ const isValidEmail = (email) => {
   return emailRegex.test(email);
 };
 
+const escapeRegex = (str) => {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+};
+
+const maskEmail = (str) => {
+  if (!str || !str.includes("@")) return str;
+  const [local, domain] = str.split("@");
+  if (local.length <= 2) return `${local[0]}*@${domain}`;
+  return `${local[0]}${"*".repeat(Math.max(1, local.length - 2))}${local.slice(-1)}@${domain}`;
+};
+
 export const sendForgotPasswordOtp = async (req, res) => {
   try {
-    const rawEmail = req.body.email;
-    const email = normalizeEmail(rawEmail);
+    const rawInput = (req.body.email || req.body.identifier || req.body.username || "").trim();
 
-    if (!email || !isValidEmail(email)) {
+    if (!rawInput) {
       return res.status(400).json({
         success: false,
-        message: "Please provide a valid registered email address.",
+        message: "Please provide your registered email address or username.",
       });
     }
 
-    const user = await Auth.findOne({ email });
+    const escapedInput = escapeRegex(rawInput);
+    const user = await Auth.findOne({
+      $or: [
+        { email: rawInput.toLowerCase() },
+        { email: rawInput },
+        { email: { $regex: new RegExp(`^${escapedInput}$`, "i") } },
+        { username: rawInput },
+        { username: { $regex: new RegExp(`^${escapedInput}$`, "i") } },
+        { mobileNumber: rawInput },
+      ],
+    });
+
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: "No registered user account found with this email address.",
+        message: "No registered account found with this email or username.",
+      });
+    }
+
+    const email = normalizeEmail(user.email);
+    if (!email || !isValidEmail(email)) {
+      return res.status(400).json({
+        success: false,
+        message: "This account does not have a valid registered email address. Please contact support.",
       });
     }
 
@@ -63,13 +92,15 @@ export const sendForgotPasswordOtp = async (req, res) => {
     const emailResult = await sendOtpEmail({
       to: email,
       otp,
-      username: user.username && !user.username.startsWith("Candidate") ? user.username : "User",
+      username: user.name || (user.username && !user.username.startsWith("Candidate") ? user.username : "User"),
     });
 
+    const masked = maskEmail(email);
     const responsePayload = {
       success: true,
-      message: "A 6-digit verification code has been sent to your email address.",
+      message: `A 6-digit verification code has been sent to your registered email (${masked}).`,
       email,
+      maskedEmail: masked,
     };
 
     if (emailResult.isDevFallback && process.env.NODE_ENV !== "production") {
@@ -90,13 +121,13 @@ export const sendForgotPasswordOtp = async (req, res) => {
 
 export const verifyForgotPasswordOtp = async (req, res) => {
   try {
-    const email = normalizeEmail(req.body.email);
+    const rawInput = (req.body.email || req.body.identifier || req.body.username || "").trim();
     const otp = typeof req.body.otp === "string" ? req.body.otp.trim() : "";
 
-    if (!email || !otp) {
+    if (!rawInput || !otp) {
       return res.status(400).json({
         success: false,
-        message: "Email and 6-digit verification code are required.",
+        message: "Email/username and 6-digit verification code are required.",
       });
     }
 
@@ -105,6 +136,22 @@ export const verifyForgotPasswordOtp = async (req, res) => {
         success: false,
         message: "Verification code must be exactly 6 digits.",
       });
+    }
+
+    let email = normalizeEmail(rawInput);
+    if (!isValidEmail(email)) {
+      const escapedInput = escapeRegex(rawInput);
+      const user = await Auth.findOne({
+        $or: [
+          { username: rawInput },
+          { username: { $regex: new RegExp(`^${escapedInput}$`, "i") } },
+          { email: { $regex: new RegExp(`^${escapedInput}$`, "i") } },
+          { mobileNumber: rawInput },
+        ],
+      });
+      if (user && user.email) {
+        email = normalizeEmail(user.email);
+      }
     }
 
     const resetDoc = await PasswordResetOtp.findOne({ email, verified: false });
@@ -163,14 +210,30 @@ export const verifyForgotPasswordOtp = async (req, res) => {
 
 export const resetUserPassword = async (req, res) => {
   try {
-    const email = normalizeEmail(req.body.email);
+    const rawInput = (req.body.email || req.body.identifier || req.body.username || "").trim();
     const { resetToken, newPassword, confirmPassword } = req.body;
 
-    if (!email || !resetToken || !newPassword) {
+    if (!rawInput || !resetToken || !newPassword) {
       return res.status(400).json({
         success: false,
-        message: "Email, reset token, and new password are required.",
+        message: "Email/username, reset token, and new password are required.",
       });
+    }
+
+    let email = normalizeEmail(rawInput);
+    if (!isValidEmail(email)) {
+      const escapedInput = escapeRegex(rawInput);
+      const user = await Auth.findOne({
+        $or: [
+          { username: rawInput },
+          { username: { $regex: new RegExp(`^${escapedInput}$`, "i") } },
+          { email: { $regex: new RegExp(`^${escapedInput}$`, "i") } },
+          { mobileNumber: rawInput },
+        ],
+      });
+      if (user && user.email) {
+        email = normalizeEmail(user.email);
+      }
     }
 
     if (newPassword.length < 4) {

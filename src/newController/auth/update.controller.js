@@ -138,25 +138,68 @@ const UserUpdateController = async (req, res) => {
 
     /* ================= MATRIMONY CATEGORY ================= */
     if (category !== undefined) {
-      const cleanCat = String(category).trim();
-      if (!cleanCat || cleanCat === "" || cleanCat === "null" || cleanCat === "undefined") {
-        updateData.category = null;
-        updateData.isAllCategories = false;
-      } else if (cleanCat === "All" || cleanCat.toLowerCase() === "all") {
+      let rawCat = category;
+      if (typeof rawCat === "string") {
+        try {
+          rawCat = JSON.parse(rawCat);
+        } catch (e) {
+          // not JSON, keep as raw string
+        }
+      }
+
+      if (Array.isArray(rawCat)) {
+        if (rawCat.includes("All") || rawCat.includes("all")) {
+          updateData.category = "All";
+          updateData.isAllCategories = true;
+          updateData.allowedCategories = [];
+        } else {
+          const cleanList = rawCat
+            .map((c) => String(c).trim())
+            .filter((c) => c && c !== "null" && c !== "undefined" && c !== "none");
+          updateData.category = cleanList;
+          updateData.isAllCategories = false;
+          updateData.allowedCategories = cleanList
+            .filter((c) => mongoose.Types.ObjectId.isValid(c) && c.length === 24)
+            .map((c) => new mongoose.Types.ObjectId(c));
+        }
+      } else if (rawCat === "All" || String(rawCat).toLowerCase() === "all") {
         updateData.category = "All";
         updateData.isAllCategories = true;
-      } else {
-        updateData.category = cleanCat;
+        updateData.allowedCategories = [];
+      } else if (
+        !rawCat ||
+        rawCat === "none" ||
+        rawCat === "null" ||
+        rawCat === "undefined" ||
+        String(rawCat).trim() === ""
+      ) {
+        updateData.category = [];
         updateData.isAllCategories = false;
+        updateData.allowedCategories = [];
+      } else {
+        const cleanCat = String(rawCat).trim();
+        updateData.category = [cleanCat];
+        updateData.isAllCategories = false;
+        if (mongoose.Types.ObjectId.isValid(cleanCat) && cleanCat.length === 24) {
+          updateData.allowedCategories = [new mongoose.Types.ObjectId(cleanCat)];
+        } else {
+          updateData.allowedCategories = [];
+        }
       }
 
       // If user changed their category on an already approved profile with biodata, require admin re-verification
-      if (
-        user.biodata &&
-        user.status === "approved" &&
-        String(user.category || "").trim() !== String(updateData.category || "").trim()
-      ) {
-        updateData.status = "pending";
+      if (user.biodata && user.status === "approved") {
+        const formatCatKey = (catVal, isAll) => {
+          if (isAll || catVal === "All") return "All";
+          if (!catVal) return "";
+          if (Array.isArray(catVal)) return [...catVal].map(String).sort().join(",");
+          return String(catVal);
+        };
+        const prevKey = formatCatKey(user.category, user.isAllCategories);
+        const newKey = formatCatKey(updateData.category, updateData.isAllCategories);
+        if (prevKey !== newKey) {
+          updateData.status = "pending";
+        }
       }
     }
 

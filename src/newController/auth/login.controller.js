@@ -90,10 +90,12 @@ const loginController = async (req, res) => {
       success: true,
       token: token,
       user: {
+        id: user._id,
+        _id: user._id,
+        auth_id: user._id,
         username: user.username,
         name: user.name || user.username,
         email: user.email || "",
-        auth_id: user._id,
       },
     });
   } catch (error) {
@@ -108,6 +110,13 @@ const loginController = async (req, res) => {
 export const GetUserById = async (req, res) => {
   try {
     const { id } = req.params;
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user ID",
+      });
+    }
+
     const user = await Auth.findById(id).select("-password").lean();
     if (!user) {
       return res.status(404).json({
@@ -116,11 +125,22 @@ export const GetUserById = async (req, res) => {
       });
     }
 
-    if (user.category && user.category !== "All" && mongoose.Types.ObjectId.isValid(user.category)) {
+    if (Array.isArray(user.category)) {
+      const validIds = user.category.filter(
+        (c) => c && typeof c === "string" && mongoose.Types.ObjectId.isValid(c) && c.length === 24
+      );
+      if (validIds.length > 0) {
+        user.categoryDetails = await MatrimonyCategory.find({ _id: { $in: validIds } }).lean();
+      } else {
+        user.categoryDetails = [];
+      }
+    } else if (user.category && user.category !== "All" && mongoose.Types.ObjectId.isValid(user.category)) {
       const categoryDoc = await MatrimonyCategory.findById(user.category).lean();
       if (categoryDoc) {
-        user.categoryDetails = categoryDoc;
+        user.categoryDetails = [categoryDoc];
       }
+    } else if (Array.isArray(user.allowedCategories) && user.allowedCategories.length > 0) {
+      user.categoryDetails = await MatrimonyCategory.find({ _id: { $in: user.allowedCategories } }).lean();
     }
 
     res.status(200).json({

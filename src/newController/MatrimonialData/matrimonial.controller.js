@@ -29,7 +29,15 @@ const populateCategoriesForProfiles = async (profiles) => {
   const categoryIds = [];
   for (const doc of profiles) {
     const cat = doc.category;
-    if (cat && typeof cat === "string" && mongoose.Types.ObjectId.isValid(cat) && cat.length === 24) {
+    if (Array.isArray(cat)) {
+      for (const c of cat) {
+        if (c && typeof c === "string" && mongoose.Types.ObjectId.isValid(c) && c.length === 24) {
+          categoryIds.push(c);
+        } else if (c && typeof c === "object" && c._id) {
+          categoryIds.push(c._id);
+        }
+      }
+    } else if (cat && typeof cat === "string" && mongoose.Types.ObjectId.isValid(cat) && cat.length === 24) {
       categoryIds.push(cat);
     } else if (cat && typeof cat === "object" && cat._id) {
       categoryIds.push(cat._id);
@@ -52,7 +60,14 @@ const populateCategoriesForProfiles = async (profiles) => {
 
     for (const doc of profiles) {
       const cat = doc.category;
-      if (cat && typeof cat === "string" && categoryMap.has(cat)) {
+      if (Array.isArray(cat)) {
+        doc.category = cat
+          .map((c) => {
+            const idStr = typeof c === "object" && c._id ? c._id.toString() : c?.toString();
+            return categoryMap.get(idStr) || c;
+          })
+          .filter(Boolean);
+      } else if (cat && typeof cat === "string" && categoryMap.has(cat)) {
         doc.category = categoryMap.get(cat);
       } else if (cat && typeof cat === "object" && cat._id && categoryMap.has(cat._id.toString())) {
         doc.category = categoryMap.get(cat._id.toString());

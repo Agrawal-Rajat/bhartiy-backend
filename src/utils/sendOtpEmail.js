@@ -25,6 +25,9 @@ function createTransporter() {
       host: brevoHost,
       port: brevoPort,
       secure: false, // port 587 uses STARTTLS
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
       auth: {
         user: brevoUser,
         pass: brevoKey,
