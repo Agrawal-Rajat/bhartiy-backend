@@ -92,10 +92,16 @@ const verify = async (req, res) => {
       message: "User verified successfully",
       data: {
         ...decoded,
+        id: user._id,
+        _id: user._id,
         username: user.username,
         name: user.name || user.username,
         role: user.role || decoded.role || "admin",
         permissions: user.permissions || decoded.permissions || ["matrimony", "matrimony_category"],
+        allowedCategories: user.allowedCategories || [],
+        category: user.category || null,
+        isAllCategories: user.isAllCategories || false,
+        isAllViewers: user.isAllViewers !== false,
       },
     });
 

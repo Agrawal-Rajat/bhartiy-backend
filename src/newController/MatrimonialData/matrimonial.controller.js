@@ -144,21 +144,108 @@ const GetMetrimonialData = async (req, res) => {
         }
       }
 
-      // If user is browsing "All Categories":
-      // Show profiles that are public across all categories (isAllViewers: true OR isAllCategories: true OR category: "All" OR allowedCategories is empty)
-      // or if viewer is the candidate themselves
-      if (!category || category === "All") {
-        const allTabConditions = [
-          { isAllViewers: true },
-          { isAllCategories: true },
-          { category: "All" },
-          { allowedCategories: { $size: 0 } },
-        ];
-        if (viewerId) {
-          allTabConditions.push({ _id: viewerId });
-          allTabConditions.push({ allowedViewers: viewerId });
+      if (!viewerId || !mongoose.Types.ObjectId.isValid(viewerId)) {
+        return res.status(200).json({
+          success: true,
+          message: "Please log in to view matrimonial profiles",
+          data: [],
+          isApproved: false,
+          pagination: {
+            totalRecords: 0,
+            totalPages: 1,
+            currentPage: 1,
+            limit: limitPage,
+          },
+        });
+      }
+
+      const viewer = await Auth.findById(viewerId)
+        .select("status allowedCategories category isAllCategories isAllViewers role")
+        .lean();
+
+      if (!viewer) {
+        return res.status(200).json({
+          success: true,
+          message: "User not found",
+          data: [],
+          isApproved: false,
+          pagination: {
+            totalRecords: 0,
+            totalPages: 1,
+            currentPage: 1,
+            limit: limitPage,
+          },
+        });
+      }
+
+      const isAdminOrSub = viewer.role === "admin" || viewer.role === "subadmin";
+
+      // If user is not admin and NOT approved, they cannot see any biodatas
+      if (!isAdminOrSub && viewer.status !== "approved") {
+        return res.status(200).json({
+          success: true,
+          message:
+            viewer.status === "rejected"
+              ? "Your profile was rejected by the administrator. Please update your profile for re-verification."
+              : "Your profile and category are pending approval by the admin or sub-admin. You will be able to view matrimonial profiles once approved.",
+          data: [],
+          isApproved: false,
+          userStatus: viewer.status,
+          pagination: {
+            totalRecords: 0,
+            totalPages: 1,
+            currentPage: 1,
+            limit: limitPage,
+          },
+        });
+      }
+
+      // Viewer is approved: determine which category of biodatas he/she can see
+      const isViewerAll = viewer.isAllCategories === true || isAdminOrSub;
+
+      if (!isViewerAll) {
+        const viewerAllowedCatIds = [];
+        if (Array.isArray(viewer.allowedCategories)) {
+          viewer.allowedCategories.forEach((c) => {
+            if (c && mongoose.Types.ObjectId.isValid(c)) {
+              viewerAllowedCatIds.push(new mongoose.Types.ObjectId(c));
+            }
+          });
         }
-        andConditions.push({ $or: allTabConditions });
+        if (Array.isArray(viewer.category)) {
+          viewer.category.forEach((c) => {
+            if (c && mongoose.Types.ObjectId.isValid(c)) {
+              viewerAllowedCatIds.push(new mongoose.Types.ObjectId(c));
+            }
+          });
+        } else if (viewer.category && mongoose.Types.ObjectId.isValid(viewer.category)) {
+          viewerAllowedCatIds.push(new mongoose.Types.ObjectId(viewer.category));
+        }
+
+        // If admin has not approved/assigned any category of biodata they can see:
+        if (viewerAllowedCatIds.length === 0) {
+          return res.status(200).json({
+            success: true,
+            message: "No matrimonial categories have been configured for your access by the admin yet.",
+            data: [],
+            isApproved: true,
+            pagination: {
+              totalRecords: 0,
+              totalPages: 1,
+              currentPage: 1,
+              limit: limitPage,
+            },
+          });
+        }
+
+        // Restrict any query to ONLY candidate profiles that fall within the viewer's allowed categories
+        andConditions.push({
+          $or: [
+            { _id: viewer._id },
+            { category: { $in: viewerAllowedCatIds } },
+            { allowedCategories: { $in: viewerAllowedCatIds } },
+          ],
+        });
       }
     } else if (status && status !== "All") {
       query.status = status;

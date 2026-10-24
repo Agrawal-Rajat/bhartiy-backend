@@ -24,6 +24,8 @@ const AuthSchema = new mongoose.Schema(
     allowedCategories: [{ type: mongoose.Schema.Types.ObjectId, ref: "matrimony_category" }],
     allowedViewers: [{ type: mongoose.Schema.Types.ObjectId, ref: "Auth" }],
     isAllViewers: { type: Boolean, default: true },
+    isFirstLogin: { type: Boolean, default: true },
+    loginCount: { type: Number, default: 0 },
   },
   { timestamps: true }
 );

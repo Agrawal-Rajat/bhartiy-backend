@@ -84,11 +84,39 @@ const loginController = async (req, res) => {
       maxAge: 86400000, // 1 day
     });
 
+    // Determine whether this is the user's first login
+    let isFirstTime = false;
+    if (user.loginCount !== undefined && user.loginCount > 0) {
+      isFirstTime = false;
+    } else if (user.isFirstLogin === false) {
+      isFirstTime = false;
+    } else if (user.isFirstLogin === true) {
+      isFirstTime = true;
+    } else {
+      // For legacy user records where isFirstLogin was not explicitly defined:
+      // If user has already configured profile details (photo, biodata, resume, short_desc, or category), treat as returning user
+      const hasConfiguredProfile = Boolean(
+        user.profile_photo ||
+        user.biodata ||
+        user.resume ||
+        user.short_desc ||
+        (Array.isArray(user.category) && user.category.length > 0) ||
+        user.category === "All"
+      );
+      isFirstTime = !hasConfiguredProfile;
+    }
+
+    // Update login count and mark isFirstLogin as false for future logins
+    user.loginCount = (user.loginCount || 0) + 1;
+    user.isFirstLogin = false;
+    await user.save();
+
     // Send success response
     res.status(200).json({
       message: "Successfully logged in",
       success: true,
       token: token,
+      isFirstLogin: isFirstTime,
       user: {
         id: user._id,
         _id: user._id,
@@ -96,6 +124,12 @@ const loginController = async (req, res) => {
         username: user.username,
         name: user.name || user.username,
         email: user.email || "",
+        isFirstLogin: isFirstTime,
+        loginCount: user.loginCount,
+        allowedCategories: user.allowedCategories || [],
+        category: user.category || null,
+        isAllCategories: user.isAllCategories || false,
+        isAllViewers: user.isAllViewers !== false,
       },
     });
   } catch (error) {
@@ -180,21 +214,49 @@ export const GetAllUsers = async (req, res) => {
 
 export const UpdateUserStatus = async (req, res) => {
   try {
-    const { id, status } = req.body
-    const user = await Auth.findByIdAndUpdate(id, { status: status }, { new: true })
+    const { id, status } = req.body;
+    const existing = await Auth.findById(id);
+    if (!existing) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const updateFields = { status };
+
+    // When approving, ensure user's allowedCategories is initialized if empty
+    if (status === "approved") {
+      const hasAllowed = Array.isArray(existing.allowedCategories) && existing.allowedCategories.length > 0;
+      if (!hasAllowed && !existing.isAllCategories) {
+        if (existing.category === "All") {
+          updateFields.isAllCategories = true;
+          updateFields.isAllViewers = true;
+        } else if (existing.category) {
+          const catList = Array.isArray(existing.category) ? existing.category : [existing.category];
+          const validIds = catList
+            .filter((c) => mongoose.Types.ObjectId.isValid(c) && String(c).length === 24)
+            .map((c) => new mongoose.Types.ObjectId(c));
+          if (validIds.length > 0) {
+            updateFields.allowedCategories = validIds;
+          }
+        }
+      }
+    }
+
+    const user = await Auth.findByIdAndUpdate(id, updateFields, { new: true });
     res.status(200).json({
       success: true,
       message: "User Status Updated",
-      user: user
+      user: user,
     });
   } catch (error) {
     console.error("Error updating user by status:", error);
     res.status(500).json({
       success: false,
-      message: "Error fetching user by ID",
-      error: error.message || error
+      message: "Error updating user status",
+      error: error.message || error,
     });
   }
-
-}
+};
 export { loginController };

@@ -222,6 +222,8 @@ const SignUpController = async (req, res) => {
       city: city.trim(),
       bloodGroup,
       age,
+      isFirstLogin: true,
+      loginCount: 0,
     };
 
     if (cleanEmail) {

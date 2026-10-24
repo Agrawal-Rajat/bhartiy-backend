@@ -187,19 +187,17 @@ const UserUpdateController = async (req, res) => {
         }
       }
 
-      // If user changed their category on an already approved profile with biodata, require admin re-verification
-      if (user.biodata && user.status === "approved") {
-        const formatCatKey = (catVal, isAll) => {
-          if (isAll || catVal === "All") return "All";
-          if (!catVal) return "";
-          if (Array.isArray(catVal)) return [...catVal].map(String).sort().join(",");
-          return String(catVal);
-        };
-        const prevKey = formatCatKey(user.category, user.isAllCategories);
-        const newKey = formatCatKey(updateData.category, updateData.isAllCategories);
-        if (prevKey !== newKey) {
-          updateData.status = "pending";
-        }
+      // If user changed their category or is not yet approved, require admin verification
+      const formatCatKey = (catVal, isAll) => {
+        if (isAll || catVal === "All") return "All";
+        if (!catVal) return "";
+        if (Array.isArray(catVal)) return [...catVal].map(String).sort().join(",");
+        return String(catVal);
+      };
+      const prevKey = formatCatKey(user.category, user.isAllCategories);
+      const newKey = formatCatKey(updateData.category, updateData.isAllCategories);
+      if (prevKey !== newKey || !user.status || user.status === "pending") {
+        updateData.status = "pending";
       }
     }
 
