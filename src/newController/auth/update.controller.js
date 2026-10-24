@@ -44,6 +44,7 @@ const UserUpdateController = async (req, res) => {
       mobileNumber,
       short_desc,
       category,
+      allowedCategories,
     } = req.body;
 
     if (!id) {
@@ -136,7 +137,8 @@ const UserUpdateController = async (req, res) => {
       short_desc: short_desc !== undefined ? String(short_desc).trim() : (user.short_desc || ""),
     };
 
-    /* ================= MATRIMONY CATEGORY ================= */
+    /* ================= OPTION 1: USER'S OWN GROUP (CATEGORY) ================= */
+    let categoryChanged = false;
     if (category !== undefined) {
       let rawCat = category;
       if (typeof rawCat === "string") {
@@ -150,22 +152,14 @@ const UserUpdateController = async (req, res) => {
       if (Array.isArray(rawCat)) {
         if (rawCat.includes("All") || rawCat.includes("all")) {
           updateData.category = "All";
-          updateData.isAllCategories = true;
-          updateData.allowedCategories = [];
         } else {
           const cleanList = rawCat
             .map((c) => String(c).trim())
             .filter((c) => c && c !== "null" && c !== "undefined" && c !== "none");
           updateData.category = cleanList;
-          updateData.isAllCategories = false;
-          updateData.allowedCategories = cleanList
-            .filter((c) => mongoose.Types.ObjectId.isValid(c) && c.length === 24)
-            .map((c) => new mongoose.Types.ObjectId(c));
         }
       } else if (rawCat === "All" || String(rawCat).toLowerCase() === "all") {
         updateData.category = "All";
-        updateData.isAllCategories = true;
-        updateData.allowedCategories = [];
       } else if (
         !rawCat ||
         rawCat === "none" ||
@@ -174,31 +168,91 @@ const UserUpdateController = async (req, res) => {
         String(rawCat).trim() === ""
       ) {
         updateData.category = [];
-        updateData.isAllCategories = false;
-        updateData.allowedCategories = [];
       } else {
         const cleanCat = String(rawCat).trim();
         updateData.category = [cleanCat];
+      }
+
+      const formatCatKey = (catVal) => {
+        if (catVal === "All") return "All";
+        if (!catVal) return "";
+        if (Array.isArray(catVal)) return [...catVal].map(String).sort().join(",");
+        return String(catVal);
+      };
+      const prevKey = formatCatKey(user.category);
+      const newKey = formatCatKey(updateData.category);
+      if (prevKey !== newKey) {
+        categoryChanged = true;
+      }
+    }
+
+    /* ================= OPTION 2: GROUPS USER WANTS TO SEE (ALLOWED CATEGORIES) ================= */
+    let allowedChanged = false;
+    if (allowedCategories !== undefined) {
+      let rawAllowed = allowedCategories;
+      if (typeof rawAllowed === "string") {
+        try {
+          rawAllowed = JSON.parse(rawAllowed);
+        } catch (e) {
+          // not JSON, keep as raw string
+        }
+      }
+
+      if (Array.isArray(rawAllowed)) {
+        if (rawAllowed.includes("All") || rawAllowed.includes("all")) {
+          updateData.isAllCategories = true;
+          updateData.allowedCategories = [];
+        } else {
+          updateData.isAllCategories = false;
+          updateData.allowedCategories = rawAllowed
+            .map((c) => String(c).trim())
+            .filter((c) => mongoose.Types.ObjectId.isValid(c) && c.length === 24)
+            .map((c) => new mongoose.Types.ObjectId(c));
+        }
+      } else if (rawAllowed === "All" || String(rawAllowed).toLowerCase() === "all") {
+        updateData.isAllCategories = true;
+        updateData.allowedCategories = [];
+      } else if (
+        !rawAllowed ||
+        rawAllowed === "none" ||
+        rawAllowed === "null" ||
+        rawAllowed === "undefined" ||
+        String(rawAllowed).trim() === ""
+      ) {
         updateData.isAllCategories = false;
-        if (mongoose.Types.ObjectId.isValid(cleanCat) && cleanCat.length === 24) {
-          updateData.allowedCategories = [new mongoose.Types.ObjectId(cleanCat)];
+        updateData.allowedCategories = [];
+      } else {
+        const cleanAllowed = String(rawAllowed).trim();
+        updateData.isAllCategories = false;
+        if (mongoose.Types.ObjectId.isValid(cleanAllowed) && cleanAllowed.length === 24) {
+          updateData.allowedCategories = [new mongoose.Types.ObjectId(cleanAllowed)];
         } else {
           updateData.allowedCategories = [];
         }
       }
 
-      // If user changed their category or is not yet approved, require admin verification
-      const formatCatKey = (catVal, isAll) => {
-        if (isAll || catVal === "All") return "All";
-        if (!catVal) return "";
-        if (Array.isArray(catVal)) return [...catVal].map(String).sort().join(",");
-        return String(catVal);
+      const formatAllowedKey = (allowedList, isAll) => {
+        if (isAll) return "All";
+        if (!Array.isArray(allowedList)) return "";
+        return [...allowedList]
+          .map((id) => (typeof id === "object" && id._id ? String(id._id) : String(id)))
+          .sort()
+          .join(",");
       };
-      const prevKey = formatCatKey(user.category, user.isAllCategories);
-      const newKey = formatCatKey(updateData.category, updateData.isAllCategories);
-      if (prevKey !== newKey || !user.status || user.status === "pending") {
-        updateData.status = "pending";
+      const prevAllowedKey = formatAllowedKey(user.allowedCategories, user.isAllCategories);
+      const newAllowedKey = formatAllowedKey(updateData.allowedCategories, updateData.isAllCategories);
+      if (prevAllowedKey !== newAllowedKey) {
+        allowedChanged = true;
       }
+    }
+
+    const isRegularUser = user.role !== "admin" && user.role !== "subadmin";
+
+    // Strict re-approval: Even after prior approval, if a user changes biodata or any category (own group or viewing groups),
+    // their account status must immediately revert to 'pending' for admin re-approval.
+    const biodataUploaded = Boolean(req.files?.biodata?.[0]);
+    if (isRegularUser && (categoryChanged || allowedChanged || biodataUploaded || !user.status || user.status === "pending")) {
+      updateData.status = "pending";
     }
 
     /* ================= PROFILE IMAGE ================= */
@@ -232,10 +286,12 @@ const UserUpdateController = async (req, res) => {
       );
 
       updateData.biodata = result.secure_url;
-      // When a user uploads biodata, it goes to admin/sub-admin for approval
-      updateData.status = "pending";
-      updateData.isAllViewers = false;
-      updateData.allowedViewers = [];
+      // When biodata is uploaded or updated, regular user profile must be re-approved
+      if (isRegularUser) {
+        updateData.status = "pending";
+        updateData.isAllViewers = false;
+        updateData.allowedViewers = [];
+      }
     }
 
     const updatedUser = await Auth.findByIdAndUpdate(id, updateData, {

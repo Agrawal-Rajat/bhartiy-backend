@@ -95,11 +95,31 @@ const GetMetrimonialData = async (req, res) => {
     const skip = (pageNumber - 1) * limitPage;
 
     const andConditions = [];
+    let query = {};
 
-    // Base condition: biodata must exist
-    let query = {
-      biodata: { $exists: true, $ne: "" },
-    };
+    if (access === "admin") {
+      // In admin panel: manage all candidate profiles that have uploaded biodata OR have selected/requested a matrimony category
+      andConditions.push({
+        $or: [
+          { biodata: { $exists: true, $ne: "" } },
+          { category: { $exists: true, $nin: [null, "", "none", []] } },
+        ],
+      });
+
+      if (status && status !== "All") {
+        if (status === "pending") {
+          andConditions.push({
+            $or: [{ status: "pending" }, { status: { $exists: false } }, { status: null }],
+          });
+        } else {
+          query.status = status;
+        }
+      }
+    } else {
+      // Base condition for public matrimonial viewers: must have biodata and be approved
+      query.biodata = { $exists: true, $ne: "" };
+      query.status = "approved";
+    }
 
     if (category && category !== "All") {
       const catOrConditions = [
@@ -247,8 +267,6 @@ const GetMetrimonialData = async (req, res) => {
           ],
         });
       }
-    } else if (status && status !== "All") {
-      query.status = status;
     }
 
     if (andConditions.length > 0) {
@@ -533,7 +551,13 @@ const DeleteMatrimonialProfile = async (req, res) => {
 const DeleteBiodata = async (req, res) => {
   try {
     const { id } = req.params;
-    await Auth.findByIdAndUpdate(id, { biodata: "" });
+    const targetUser = await Auth.findById(id);
+    const isRegularUser = targetUser && targetUser.role !== "admin" && targetUser.role !== "subadmin";
+    const updateObj = { biodata: "" };
+    if (isRegularUser) {
+      updateObj.status = "pending";
+    }
+    await Auth.findByIdAndUpdate(id, updateObj);
     return res.status(200).json({
       success: true,
       message: "Biodata removed successfully",
