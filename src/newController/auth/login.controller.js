@@ -225,15 +225,46 @@ export const UpdateUserStatus = async (req, res) => {
 
     const updateFields = { status };
 
-    // When approving, ensure user's allowedCategories is initialized if empty
+    // When approving:
     if (status === "approved") {
-      const hasAllowed = Array.isArray(existing.allowedCategories) && existing.allowedCategories.length > 0;
-      if (!hasAllowed && !existing.isAllCategories) {
-        if (existing.category === "All") {
+      // If user has pending changes awaiting approval, commit them into active fields now!
+      if (existing.hasPendingChanges) {
+        if (existing.pendingBiodata) {
+          updateFields.biodata = existing.pendingBiodata;
+        }
+        if (existing.pendingCategory !== undefined && existing.pendingCategory !== null) {
+          updateFields.category = existing.pendingCategory;
+        }
+        if (existing.pendingAllowedCategories !== undefined && existing.pendingAllowedCategories.length > 0) {
+          updateFields.allowedCategories = existing.pendingAllowedCategories;
+          updateFields.isAllCategories = Boolean(existing.pendingIsAllCategories);
+        } else if (existing.pendingIsAllCategories) {
+          updateFields.isAllCategories = true;
+          updateFields.allowedCategories = [];
+        }
+
+        // Clear pending staging fields
+        updateFields.hasPendingChanges = false;
+        updateFields.pendingBiodata = "";
+        updateFields.pendingCategory = null;
+        updateFields.pendingAllowedCategories = [];
+        updateFields.pendingIsAllCategories = false;
+        updateFields.pendingChangeDate = null;
+      }
+
+      // Ensure user's allowedCategories is initialized if empty
+      const hasAllowed =
+        (Array.isArray(updateFields.allowedCategories) && updateFields.allowedCategories.length > 0) ||
+        (Array.isArray(existing.allowedCategories) && existing.allowedCategories.length > 0);
+      const isAll = updateFields.isAllCategories !== undefined ? updateFields.isAllCategories : existing.isAllCategories;
+
+      if (!hasAllowed && !isAll) {
+        const activeCat = updateFields.category !== undefined ? updateFields.category : existing.category;
+        if (activeCat === "All") {
           updateFields.isAllCategories = true;
           updateFields.isAllViewers = true;
-        } else if (existing.category) {
-          const catList = Array.isArray(existing.category) ? existing.category : [existing.category];
+        } else if (activeCat) {
+          const catList = Array.isArray(activeCat) ? activeCat : [activeCat];
           const validIds = catList
             .filter((c) => mongoose.Types.ObjectId.isValid(c) && String(c).length === 24)
             .map((c) => new mongoose.Types.ObjectId(c));
@@ -242,11 +273,24 @@ export const UpdateUserStatus = async (req, res) => {
           }
         }
       }
+    } else if (status === "rejected") {
+      // If user was already approved and had pending changes, rejecting cancels the pending change request
+      // leaving their existing approved profile active!
+      if (existing.hasPendingChanges && existing.status === "approved") {
+        updateFields.status = "approved";
+        updateFields.hasPendingChanges = false;
+        updateFields.pendingBiodata = "";
+        updateFields.pendingCategory = null;
+        updateFields.pendingAllowedCategories = [];
+        updateFields.pendingIsAllCategories = false;
+        updateFields.pendingChangeDate = null;
+      }
     }
 
     const user = await Auth.findByIdAndUpdate(id, updateFields, { new: true });
     res.status(200).json({
       success: true,
+      status: true,
       message: "User Status Updated",
       user: user,
     });

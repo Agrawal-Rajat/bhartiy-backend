@@ -26,6 +26,12 @@ const AuthSchema = new mongoose.Schema(
     isAllViewers: { type: Boolean, default: true },
     isFirstLogin: { type: Boolean, default: true },
     loginCount: { type: Number, default: 0 },
+    hasPendingChanges: { type: Boolean, default: false },
+    pendingCategory: { type: mongoose.Schema.Types.Mixed, default: null },
+    pendingIsAllCategories: { type: Boolean, default: false },
+    pendingAllowedCategories: [{ type: mongoose.Schema.Types.ObjectId, ref: "matrimony_category" }],
+    pendingBiodata: { type: String, trim: true, default: "" },
+    pendingChangeDate: { type: Date, default: null },
   },
   { timestamps: true }
 );

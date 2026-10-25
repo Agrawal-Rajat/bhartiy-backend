@@ -27,59 +27,57 @@ const populateCategoriesForProfiles = async (profiles) => {
   if (!profiles || !profiles.length) return profiles;
 
   const categoryIds = [];
-  for (const doc of profiles) {
-    const cat = doc.category;
-    if (Array.isArray(cat)) {
-      for (const c of cat) {
+  const collectCatIds = (val) => {
+    if (Array.isArray(val)) {
+      for (const c of val) {
         if (c && typeof c === "string" && mongoose.Types.ObjectId.isValid(c) && c.length === 24) {
           categoryIds.push(c);
         } else if (c && typeof c === "object" && c._id) {
-          categoryIds.push(c._id);
+          categoryIds.push(String(c._id));
         }
       }
-    } else if (cat && typeof cat === "string" && mongoose.Types.ObjectId.isValid(cat) && cat.length === 24) {
-      categoryIds.push(cat);
-    } else if (cat && typeof cat === "object" && cat._id) {
-      categoryIds.push(cat._id);
+    } else if (val && typeof val === "string" && mongoose.Types.ObjectId.isValid(val) && val.length === 24) {
+      categoryIds.push(val);
+    } else if (val && typeof val === "object" && val._id) {
+      categoryIds.push(String(val._id));
     }
+  };
 
-    if (Array.isArray(doc.allowedCategories)) {
-      for (const ac of doc.allowedCategories) {
-        if (ac && typeof ac === "string" && mongoose.Types.ObjectId.isValid(ac) && ac.length === 24) {
-          categoryIds.push(ac);
-        } else if (ac && typeof ac === "object" && ac._id) {
-          categoryIds.push(ac._id);
-        }
-      }
-    }
+  for (const doc of profiles) {
+    collectCatIds(doc.category);
+    collectCatIds(doc.allowedCategories);
+    collectCatIds(doc.pendingCategory);
+    collectCatIds(doc.pendingAllowedCategories);
   }
 
   if (categoryIds.length > 0) {
     const categories = await MatrimonyCategory.find({ _id: { $in: categoryIds } }).lean();
     const categoryMap = new Map(categories.map((c) => [c._id.toString(), c]));
 
-    for (const doc of profiles) {
-      const cat = doc.category;
-      if (Array.isArray(cat)) {
-        doc.category = cat
+    const mapVal = (val) => {
+      if (Array.isArray(val)) {
+        return val
           .map((c) => {
             const idStr = typeof c === "object" && c._id ? c._id.toString() : c?.toString();
             return categoryMap.get(idStr) || c;
           })
           .filter(Boolean);
-      } else if (cat && typeof cat === "string" && categoryMap.has(cat)) {
-        doc.category = categoryMap.get(cat);
-      } else if (cat && typeof cat === "object" && cat._id && categoryMap.has(cat._id.toString())) {
-        doc.category = categoryMap.get(cat._id.toString());
+      } else if (val && typeof val === "string" && categoryMap.has(val)) {
+        return categoryMap.get(val);
+      } else if (val && typeof val === "object" && val._id && categoryMap.has(val._id.toString())) {
+        return categoryMap.get(val._id.toString());
       }
+      return val;
+    };
 
-      if (Array.isArray(doc.allowedCategories)) {
-        doc.allowedCategories = doc.allowedCategories
-          .map((ac) => {
-            const idStr = typeof ac === "object" && ac._id ? ac._id.toString() : ac?.toString();
-            return categoryMap.get(idStr) || ac;
-          })
-          .filter(Boolean);
+    for (const doc of profiles) {
+      doc.category = mapVal(doc.category);
+      doc.allowedCategories = mapVal(doc.allowedCategories);
+      if (doc.pendingCategory) {
+        doc.pendingCategory = mapVal(doc.pendingCategory);
+      }
+      if (doc.pendingAllowedCategories) {
+        doc.pendingAllowedCategories = mapVal(doc.pendingAllowedCategories);
       }
     }
   }
@@ -103,13 +101,20 @@ const GetMetrimonialData = async (req, res) => {
         $or: [
           { biodata: { $exists: true, $ne: "" } },
           { category: { $exists: true, $nin: [null, "", "none", []] } },
+          { hasPendingChanges: true },
+          { pendingBiodata: { $exists: true, $ne: "" } },
         ],
       });
 
       if (status && status !== "All") {
         if (status === "pending") {
           andConditions.push({
-            $or: [{ status: "pending" }, { status: { $exists: false } }, { status: null }],
+            $or: [
+              { status: "pending" },
+              { status: { $exists: false } },
+              { status: null },
+              { hasPendingChanges: true },
+            ],
           });
         } else {
           query.status = status;
@@ -601,6 +606,15 @@ const updateBiodataConfig = async (req, res) => {
 
     if (status !== undefined) {
       updateFields.status = status;
+    }
+
+    if (category !== undefined || allowedCategories !== undefined || status === "approved") {
+      updateFields.hasPendingChanges = false;
+      updateFields.pendingBiodata = "";
+      updateFields.pendingCategory = null;
+      updateFields.pendingAllowedCategories = [];
+      updateFields.pendingIsAllCategories = false;
+      updateFields.pendingChangeDate = null;
     }
 
     const updated = await Auth.findByIdAndUpdate(id, updateFields, { new: true })

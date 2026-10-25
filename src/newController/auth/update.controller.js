@@ -247,13 +247,7 @@ const UserUpdateController = async (req, res) => {
     }
 
     const isRegularUser = user.role !== "admin" && user.role !== "subadmin";
-
-    // Strict re-approval: Even after prior approval, if a user changes biodata or any category (own group or viewing groups),
-    // their account status must immediately revert to 'pending' for admin re-approval.
     const biodataUploaded = Boolean(req.files?.biodata?.[0]);
-    if (isRegularUser && (categoryChanged || allowedChanged || biodataUploaded || !user.status || user.status === "pending")) {
-      updateData.status = "pending";
-    }
 
     /* ================= PROFILE IMAGE ================= */
     if (req.files?.profile_photo?.[0]) {
@@ -262,7 +256,6 @@ const UserUpdateController = async (req, res) => {
         "bhartiy/profile-photos",
         "image"
       );
-
       updateData.profile_photo = result.secure_url;
     }
 
@@ -273,22 +266,83 @@ const UserUpdateController = async (req, res) => {
         "bhartiy/resumes",
         "auto"
       );
-
       updateData.resume = result.secure_url;
     }
 
-    /* ================= BIODATA ================= */
-    if (req.files?.biodata?.[0]) {
+    /* ================= BIODATA UPLOAD ================= */
+    let uploadedBiodataUrl = null;
+    if (biodataUploaded) {
       const result = await uploadToCloudinary(
         req.files.biodata[0].buffer,
         "bhartiy/biodata",
         "auto"
       );
+      uploadedBiodataUrl = result.secure_url;
+    }
 
-      updateData.biodata = result.secure_url;
-      // When biodata is uploaded or updated, regular user profile must be re-approved
+    /* ================= CHANGE APPROVAL & STAGING ================= */
+    if (user.status === "approved" && isRegularUser) {
+      // User is already approved.
+      // Every time the user changes the biodata or changes any category,
+      // it goes to the admin/subadmin portal for approval.
+      // Until then, the old approved remains in active use!
+      if (categoryChanged || allowedChanged || biodataUploaded) {
+        updateData.hasPendingChanges = true;
+        updateData.pendingChangeDate = new Date();
+
+        // 1. Pending category (user's own group)
+        if (categoryChanged) {
+          updateData.pendingCategory = updateData.category;
+        } else if (user.pendingCategory !== undefined && user.hasPendingChanges) {
+          updateData.pendingCategory = user.pendingCategory;
+        } else {
+          updateData.pendingCategory = user.category;
+        }
+        // Retain currently approved category in active use
+        updateData.category = user.category;
+
+        // 2. Pending viewing groups (allowedCategories & isAllCategories)
+        if (allowedChanged) {
+          updateData.pendingAllowedCategories = updateData.allowedCategories;
+          updateData.pendingIsAllCategories = updateData.isAllCategories;
+        } else if (user.pendingAllowedCategories !== undefined && user.hasPendingChanges) {
+          updateData.pendingAllowedCategories = user.pendingAllowedCategories;
+          updateData.pendingIsAllCategories = user.pendingIsAllCategories;
+        } else {
+          updateData.pendingAllowedCategories = user.allowedCategories;
+          updateData.pendingIsAllCategories = user.isAllCategories;
+        }
+        // Retain currently approved allowedCategories in active use
+        updateData.allowedCategories = user.allowedCategories;
+        updateData.isAllCategories = user.isAllCategories;
+
+        // 3. Pending biodata
+        if (uploadedBiodataUrl) {
+          updateData.pendingBiodata = uploadedBiodataUrl;
+        } else if (user.pendingBiodata && user.hasPendingChanges) {
+          updateData.pendingBiodata = user.pendingBiodata;
+        }
+        // Retain currently approved biodata in active use
+        updateData.biodata = user.biodata;
+
+        // Remain approved so user can continue viewing matrimony profiles with approved permissions
+        updateData.status = "approved";
+      } else {
+        // No changes to biodata or category: retain active approved data
+        updateData.category = user.category;
+        updateData.allowedCategories = user.allowedCategories;
+        updateData.isAllCategories = user.isAllCategories;
+        updateData.biodata = user.biodata;
+        updateData.status = "approved";
+      }
+    } else {
+      // First-time or not-yet-approved user (pending or rejected):
+      if (uploadedBiodataUrl) {
+        updateData.biodata = uploadedBiodataUrl;
+      }
       if (isRegularUser) {
         updateData.status = "pending";
+        updateData.hasPendingChanges = false;
         updateData.isAllViewers = false;
         updateData.allowedViewers = [];
       }
