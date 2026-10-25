@@ -37,6 +37,7 @@ const verify = async (req, res) => {
 
     const cleanEmail = email ? email.trim().toLowerCase() : "";
     let user = null;
+    let isAdminUser = false;
 
     // 3. If role is admin or subadmin, check Admin model first
     if (role === "admin" || role === "subadmin" || role === "superadmin") {
@@ -47,6 +48,9 @@ const verify = async (req, res) => {
           { email: { $regex: new RegExp(`^${cleanEmail}$`, "i") } }
         ]
       });
+      if (user) {
+        isAdminUser = true;
+      }
     }
 
     // Otherwise or if not found, check Auth model
@@ -74,6 +78,9 @@ const verify = async (req, res) => {
           { email: { $regex: new RegExp(`^${cleanEmail}$`, "i") } }
         ]
       });
+      if (user) {
+        isAdminUser = true;
+      }
     }
 
     if (!user) {
@@ -86,6 +93,17 @@ const verify = async (req, res) => {
 
     console.log("✅ User verified successfully");
 
+    // Determine actual role and permissions:
+    // If the record is from Admin model, resolve admin/subadmin role;
+    // If from Auth model (regular users), role MUST be 'user', never defaulted to 'admin'.
+    const resolvedRole = isAdminUser
+      ? (user.role || decoded.role || "admin")
+      : (user.role || "user");
+
+    const resolvedPermissions = isAdminUser
+      ? (user.permissions || decoded.permissions || ["matrimony", "matrimony_category"])
+      : [];
+
     // 4. Send response with user data
     res.status(200).json({
       success: true,
@@ -96,8 +114,10 @@ const verify = async (req, res) => {
         _id: user._id,
         username: user.username,
         name: user.name || user.username,
-        role: user.role || decoded.role || "admin",
-        permissions: user.permissions || decoded.permissions || ["matrimony", "matrimony_category"],
+        role: resolvedRole,
+        permissions: resolvedPermissions,
+        biodata: user.biodata || "",
+        status: user.status || "pending",
         allowedCategories: user.allowedCategories || [],
         category: user.category || null,
         isAllCategories: user.isAllCategories || false,
