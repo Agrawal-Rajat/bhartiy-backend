@@ -11,7 +11,7 @@ const userfiles = upload("userfile").fields([
 ]);
 
 
-const uploadToCloudinary = (fileBuffer, folder, resourceType = "auto") => {
+export const uploadToCloudinary = (fileBuffer, folder, resourceType = "auto") => {
   return new Promise((resolve, reject) => {
     const uploadStream = cloudinary.uploader.upload_stream(
       {

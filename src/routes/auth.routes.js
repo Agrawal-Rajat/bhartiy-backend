@@ -26,7 +26,7 @@ const authRouter = Router();
 
 authRouter.post("/login", loginController);
 authRouter.post("/adminlogin", AdminloginController);
-authRouter.post("/signup", SignUpController);
+authRouter.post("/signup", userfiles, SignUpController);
 authRouter.get("/check-username/:username", checkUsernameAvailability);
 authRouter.post("/verify", verifyToken, verify);
 authRouter.post("/logout", logoutController);

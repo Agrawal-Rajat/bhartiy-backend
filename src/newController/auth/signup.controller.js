@@ -1,6 +1,8 @@
 
 import Auth from "../../models/AuthModel/auth.model.js";
 import bcrypt from "bcryptjs";
+import mongoose from "mongoose";
+import { uploadToCloudinary } from "./update.controller.js";
 
 export const calculateAge = (dob) => {
   const birthDate = new Date(dob);
@@ -88,6 +90,10 @@ const SignUpController = async (req, res) => {
       gender,
       dob,
       mobile,
+      caste,
+      short_desc,
+      category,
+      allowedCategories,
     } = req.body;
 
     if (
@@ -224,10 +230,141 @@ const SignUpController = async (req, res) => {
       age,
       isFirstLogin: true,
       loginCount: 0,
+      status: "pending",
     };
 
     if (cleanEmail) {
       createPayload.email = cleanEmail;
+    }
+
+    if (caste && typeof caste === "string") {
+      createPayload.caste = caste.trim();
+    }
+
+    if (short_desc && typeof short_desc === "string") {
+      createPayload.short_desc = short_desc.trim();
+    }
+
+    // Process category (User's own group)
+    if (category !== undefined && category !== null) {
+      const rawCategory = category;
+      if (rawCategory === "All" || rawCategory === "all") {
+        createPayload.category = "All";
+      } else if (
+        !rawCategory ||
+        rawCategory === "none" ||
+        rawCategory === "null" ||
+        String(rawCategory).trim() === ""
+      ) {
+        createPayload.category = null;
+      } else {
+        try {
+          const parsed = typeof rawCategory === "string" ? JSON.parse(rawCategory) : rawCategory;
+          if (Array.isArray(parsed)) {
+            if (parsed.includes("All") || parsed.includes("all")) {
+              createPayload.category = "All";
+            } else {
+              const validIds = parsed
+                .map((id) => (typeof id === "object" && id._id ? String(id._id) : String(id)).trim())
+                .filter((id) => mongoose.Types.ObjectId.isValid(id) && id.length === 24)
+                .map((id) => new mongoose.Types.ObjectId(id));
+              createPayload.category = validIds.length > 0 ? validIds : null;
+            }
+          } else {
+            const cleanStr = String(rawCategory).trim();
+            if (mongoose.Types.ObjectId.isValid(cleanStr) && cleanStr.length === 24) {
+              createPayload.category = [new mongoose.Types.ObjectId(cleanStr)];
+            } else {
+              createPayload.category = null;
+            }
+          }
+        } catch (e) {
+          const cleanStr = String(rawCategory).trim();
+          if (mongoose.Types.ObjectId.isValid(cleanStr) && cleanStr.length === 24) {
+            createPayload.category = [new mongoose.Types.ObjectId(cleanStr)];
+          } else {
+            createPayload.category = null;
+          }
+        }
+      }
+    }
+
+    // Process allowedCategories (Groups user wants to view)
+    if (allowedCategories !== undefined && allowedCategories !== null) {
+      const rawAllowed = allowedCategories;
+      if (rawAllowed === "All" || rawAllowed === "all") {
+        createPayload.isAllCategories = true;
+        createPayload.allowedCategories = [];
+      } else if (
+        !rawAllowed ||
+        rawAllowed === "none" ||
+        rawAllowed === "null" ||
+        String(rawAllowed).trim() === ""
+      ) {
+        createPayload.isAllCategories = false;
+        createPayload.allowedCategories = [];
+      } else {
+        try {
+          const parsed = typeof rawAllowed === "string" ? JSON.parse(rawAllowed) : rawAllowed;
+          if (Array.isArray(parsed)) {
+            if (parsed.includes("All") || parsed.includes("all")) {
+              createPayload.isAllCategories = true;
+              createPayload.allowedCategories = [];
+            } else {
+              const validIds = parsed
+                .map((id) => (typeof id === "object" && id._id ? String(id._id) : String(id)).trim())
+                .filter((id) => mongoose.Types.ObjectId.isValid(id) && id.length === 24)
+                .map((id) => new mongoose.Types.ObjectId(id));
+              createPayload.isAllCategories = false;
+              createPayload.allowedCategories = validIds;
+            }
+          } else {
+            const cleanStr = String(rawAllowed).trim();
+            createPayload.isAllCategories = false;
+            if (mongoose.Types.ObjectId.isValid(cleanStr) && cleanStr.length === 24) {
+              createPayload.allowedCategories = [new mongoose.Types.ObjectId(cleanStr)];
+            } else {
+              createPayload.allowedCategories = [];
+            }
+          }
+        } catch (e) {
+          const cleanStr = String(rawAllowed).trim();
+          createPayload.isAllCategories = false;
+          if (mongoose.Types.ObjectId.isValid(cleanStr) && cleanStr.length === 24) {
+            createPayload.allowedCategories = [new mongoose.Types.ObjectId(cleanStr)];
+          } else {
+            createPayload.allowedCategories = [];
+          }
+        }
+      }
+    }
+
+    // Process uploaded files if any
+    if (req.files?.profile_photo?.[0]) {
+      const result = await uploadToCloudinary(
+        req.files.profile_photo[0].buffer,
+        "bhartiy/profile-photos",
+        "image"
+      );
+      createPayload.profile_photo = result.secure_url;
+    }
+
+    if (req.files?.resume?.[0]) {
+      const result = await uploadToCloudinary(
+        req.files.resume[0].buffer,
+        "bhartiy/resumes",
+        "auto"
+      );
+      createPayload.resume = result.secure_url;
+    }
+
+    if (req.files?.biodata?.[0]) {
+      const result = await uploadToCloudinary(
+        req.files.biodata[0].buffer,
+        "bhartiy/biodata",
+        "auto"
+      );
+      createPayload.biodata = result.secure_url;
     }
 
     const newUser = await Auth.create(createPayload);
